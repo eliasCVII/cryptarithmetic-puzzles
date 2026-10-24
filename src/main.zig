@@ -65,7 +65,34 @@ fn compute_weights(words: []const []const u8, unique_chars: []const u8, factor: 
     return weights;
 }
 
-fn assign_digits(weights: []const i64, index: u8, current_sum: i64, unique_chars: []const u8, assigned_digits: []u8, used_mask: u16) bool {
+fn precomp_branches(unique_chars: []const u8, weights: []const i64, max_suffix: []i64, min_suffix: []i64,) void {
+    var pos_sum: i64 = 0;
+    var neg_sum: i64 = 0;
+    var i: usize = unique_chars.len;
+
+    while (i > 0) {
+        i -= 1;
+        const w = weights[i];
+        if (w > 0) {
+            pos_sum += w * 9;
+        } else if (w < 0) {
+            neg_sum += w * 9;
+        }
+        max_suffix[i] = pos_sum;
+        min_suffix[i] = neg_sum;
+    }
+}
+
+fn init_vars(words: []const []const u8, unique_chars: []const u8) [10]bool {
+    var bit_mask: [10]bool = @splat(false);
+    for (words) |word| {
+        if (word.len == 1) continue;
+        bit_mask[find_index(word[0], unique_chars)] = true;
+    }
+    return bit_mask;
+}
+
+fn assign_digits(weights: []const i64, unique_chars: []const u8, assigned_digits: []u8, bit_mask: []const bool, max_suffix: []i64, min_suffix: []i64, index: u8, current_sum: i64, used_mask: u16) bool {
     // go through every char in unique chars, look for a number between 0-9
     // and then set it in a, b and c
     // backtrack if it returns false and try a new number
@@ -74,11 +101,24 @@ fn assign_digits(weights: []const i64, index: u8, current_sum: i64, unique_chars
     if (index == unique_chars.len) { // you assigned numbers to all the chars
         return current_sum == 0;
     }
+    if (current_sum + max_suffix[index] < 0) return false;
+    if (current_sum + min_suffix[index] > 0) return false;
     for (0..10) |d| {
         if ((used_mask & @as(u16, 1) << @intCast(d)) != 0) continue;
+        if (bit_mask[index] and d == 0) continue;
         assigned_digits[index] = @intCast(d);
         const next_sum = current_sum + weights[index] * @as(i64, @intCast(d));
-        if (assign_digits(weights, index + 1, next_sum, unique_chars, assigned_digits, used_mask | (@as(u16, 1) << @intCast(d)))) {
+        if (assign_digits(
+            weights,
+            unique_chars,
+            assigned_digits,
+            bit_mask,
+            max_suffix,
+            min_suffix,
+            index + 1,
+            next_sum,
+            used_mask | (@as(u16, 1) << @intCast(d))
+        )) {
             return true;
         }
     }
@@ -99,12 +139,21 @@ pub fn main(init: std.process.Init) !void {
     var assigned_digits: [10]u8 = undefined;
     const unique: UniqueChars = try get_unique_chars(&.{ a, b, c });
     const weights: [10]i64 = compute_weights(&.{ a, b, c }, unique.slice(), &.{ 1, 1, -1 });
+    const bit_mask: [10]bool = init_vars(&.{ a, b, c }, unique.slice());
+    var max_suffix: [10]i64 = @splat(0);
+    var min_suffix: [10]i64 = @splat(0);
+    precomp_branches(unique.slice(), &weights, &max_suffix, &min_suffix);
 
-    if (assign_digits(&weights, 0, // index
-        0, // current_sum
+    if (assign_digits(
+        &weights,
         unique.slice(), // array of unique chars found
         &assigned_digits, // numbers tried
-        0 // used_mask
+        &bit_mask,
+        &max_suffix,
+        &min_suffix,
+        0, // index
+        0, // current_sum
+        0, // used_mask
     )) {
         const num_a = word_to_number(a, unique.slice(), &assigned_digits);
         const num_b = word_to_number(b, unique.slice(), &assigned_digits);
