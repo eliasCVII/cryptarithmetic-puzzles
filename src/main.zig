@@ -4,7 +4,7 @@ const UniqueChars = struct {
     chars: [10]u8,
     len: usize,
 
-    pub fn slice(self: *const UniqueChars) []const u8 {
+    pub fn slice(self: *UniqueChars) []u8 {
         return self.chars[0..self.len];
     }
 };
@@ -65,7 +65,12 @@ fn compute_weights(words: []const []const u8, unique_chars: []const u8, factor: 
     return weights;
 }
 
-fn precomp_branches(unique_chars: []const u8, weights: []const i64, max_suffix: []i64, min_suffix: []i64,) void {
+fn precomp_branches(
+    unique_chars: []const u8,
+    weights: []const i64,
+    max_suffix: []i64,
+    min_suffix: []i64,
+) void {
     var pos_sum: i64 = 0;
     var neg_sum: i64 = 0;
     var i: usize = unique_chars.len;
@@ -92,6 +97,22 @@ fn init_vars(words: []const []const u8, unique_chars: []const u8) [10]bool {
     return bit_mask;
 }
 
+fn sort_chars(unique_chars: []u8, weights: []i64, bit_mask: []bool) void {
+    for (0..unique_chars.len) |i| {
+        var tope = i;
+        for (i + 1..unique_chars.len) |j| {
+            if (@abs(weights[j]) > @abs(weights[tope])) {
+                tope = j;
+            }
+        }
+        if (tope != i) {
+            std.mem.swap(i64, &weights[i], &weights[tope]);
+            std.mem.swap(u8, &unique_chars[i], &unique_chars[tope]);
+            std.mem.swap(bool, &bit_mask[i], &bit_mask[tope]);
+        }
+    }
+}
+
 fn assign_digits(weights: []const i64, unique_chars: []const u8, assigned_digits: []u8, bit_mask: []const bool, max_suffix: []i64, min_suffix: []i64, index: u8, current_sum: i64, used_mask: u16) bool {
     // go through every char in unique chars, look for a number between 0-9
     // and then set it in a, b and c
@@ -108,17 +129,7 @@ fn assign_digits(weights: []const i64, unique_chars: []const u8, assigned_digits
         if (bit_mask[index] and d == 0) continue;
         assigned_digits[index] = @intCast(d);
         const next_sum = current_sum + weights[index] * @as(i64, @intCast(d));
-        if (assign_digits(
-            weights,
-            unique_chars,
-            assigned_digits,
-            bit_mask,
-            max_suffix,
-            min_suffix,
-            index + 1,
-            next_sum,
-            used_mask | (@as(u16, 1) << @intCast(d))
-        )) {
+        if (assign_digits(weights, unique_chars, assigned_digits, bit_mask, max_suffix, min_suffix, index + 1, next_sum, used_mask | (@as(u16, 1) << @intCast(d)))) {
             return true;
         }
     }
@@ -137,9 +148,11 @@ pub fn main(init: std.process.Init) !void {
     const b: []const u8 = "MORE";
     const c: []const u8 = "MONEY";
     var assigned_digits: [10]u8 = undefined;
-    const unique: UniqueChars = try get_unique_chars(&.{ a, b, c });
-    const weights: [10]i64 = compute_weights(&.{ a, b, c }, unique.slice(), &.{ 1, 1, -1 });
-    const bit_mask: [10]bool = init_vars(&.{ a, b, c }, unique.slice());
+    var unique: UniqueChars = try get_unique_chars(&.{ a, b, c });
+    var weights: [10]i64 = compute_weights(&.{ a, b, c }, unique.slice(), &.{ 1, 1, -1 });
+    var bit_mask: [10]bool = init_vars(&.{ a, b, c }, unique.slice());
+    sort_chars(unique.slice(), &weights, &bit_mask);
+
     var max_suffix: [10]i64 = @splat(0);
     var min_suffix: [10]i64 = @splat(0);
     precomp_branches(unique.slice(), &weights, &max_suffix, &min_suffix);
