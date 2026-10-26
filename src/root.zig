@@ -6,6 +6,41 @@ pub const Solution = struct {
     sum: u64,
 };
 
+pub const Stats = struct {
+    nodes_visites: usize,
+    conflicts: usize,
+    solution_count: usize
+};
+
+pub const Domain = struct {
+    mask: u10,
+
+    pub fn all() Domain {
+        return .{ .mask = 0b11_1111_1111 };
+    }
+
+    pub fn remove(self: *Domain, digit: u4) void {
+        self.mask = self.mask & ~(@as(u10, 1) << digit);
+    }
+
+    pub fn fix(self: *Domain, digit: u4) void {
+        // set a fixed number
+        self.mask = (@as(u10, 1) << digit);
+    }
+
+    pub fn is_fixed(self: Domain) bool {
+        return @popCount(self.mask) == 1;
+    }
+
+    pub fn get_fixed(self: Domain) u4 {
+        return @truncate(@ctz(self.mask));
+    }
+
+    pub fn contains(self: Domain, digit: usize) bool {
+        return (self.mask & (@as(u10, 1) << @intCast(digit)) != 0);
+    }
+};
+
 pub const UniqueChars = struct {
     chars: [10]u8,
     len: usize,
@@ -142,6 +177,86 @@ pub fn assign_digits(weights: []const i64, unique_chars: []const u8, assigned_di
     return false;
 }
 
+pub fn presolve(words: []const []const u8, unique_chars: []const u8, domains: []Domain) void {
+    var max_len: usize = 0;
+
+    for (words, 0..) |word, i| {
+        if (word.len > 1) {
+            const letter_pos = find_index(word[0], unique_chars);
+            domains[letter_pos].remove(0);
+        }
+        if (i < words.len - 1) {
+            max_len = @max(max_len, word.len);
+        }
+    }
+    // for (words[0 .. words.len - 1]) |word| {
+    //     max_len = @max(max_len, word.len);
+    // }
+
+    const result_word = words[words.len - 1];
+    if (result_word.len > max_len) { // if c.len > a.len + b.len
+        const target_ch = find_index(result_word[0], unique_chars);
+        domains[target_ch].fix(1);
+    }
+    for (domains, 0..) |domain, k| {
+        if (domain.is_fixed()) {
+            const fixed_digit = domain.get_fixed();
+            // do something here
+            for (domains, 0..) |*d, j| {
+                if (j != k) {
+                    d.remove(fixed_digit);
+                }
+            }
+        }
+    }
+}
+
+pub fn assign_digits_cp(
+    weights: []const i64,
+    unique_chars: []const u8,
+    assigned_digits: []u8,
+    domains: []Domain,
+    max_suffix: []i64,
+    min_suffix: []i64,
+    index: u8,
+    current_sum: i64,
+    used_mask: u16,
+    stats: *Stats
+) void {
+    stats.nodes_visites += 1;
+    if (index == unique_chars.len) { // you assigned numbers to all the chars
+        if (current_sum == 0) {
+            stats.solution_count += 1;
+        }
+        return;
+    }
+    if (current_sum + max_suffix[index] < 0) {
+        stats.conflicts += 1;
+        return;
+    }
+    if (current_sum + min_suffix[index] > 0) {
+        stats.conflicts += 1;
+        return;
+    }
+    for (0..10) |d| {
+        if ((used_mask & @as(u16, 1) << @intCast(d)) != 0) continue;
+        if (!domains[index].contains(d)) continue;
+        assigned_digits[index] = @intCast(d);
+        const next_sum = current_sum + weights[index] * @as(i64, @intCast(d));
+        assign_digits_cp(
+            weights,
+            unique_chars,
+            assigned_digits,
+            domains,
+            max_suffix,
+            min_suffix,
+            index + 1,
+            next_sum,
+            used_mask | (@as(u16, 1) << @intCast(d)),
+            stats
+        );
+    }
+}
 
 pub fn solve(a: []const u8, b: []const u8, c: []const u8) ?Solution {
     if (a.len == 0 or b.len == 0 or c.len == 0) return null;
@@ -175,40 +290,99 @@ pub fn solve(a: []const u8, b: []const u8, c: []const u8) ?Solution {
     return null;
 }
 
+pub fn solve_cp(words: []const []const u8) ?Stats {
+    var factors: [16]i64 = undefined;
+    for (words, 0..) |word, i| {
+        if (word.len == 0) return null;
+        if (i < words.len - 1) {
+            factors[i] = 1;
+        } else {
+            factors[words.len-1] = -1;
+        }
+    }
+    var unique = get_unique_chars(words) catch return null;
+    var weights: [10]i64 = compute_weights(words, unique.slice(), factors[0..words.len]);
+
+    var bit_mask: [10]bool = init_vars(words, unique.slice());
+    var stats: Stats = .{ .conflicts = 0, .nodes_visites = 0, .solution_count = 0};
+    sort_chars(unique.slice(), &weights, &bit_mask);
+    var domains: [10]Domain = @splat(Domain.all());
+    presolve(words, unique.slice(), &domains);
+    var max_suffix: [10]i64 = @splat(0);
+    var min_suffix: [10]i64 = @splat(0);
+    precomp_branches(unique.slice(), &weights, &max_suffix, &min_suffix);
+
+    var assigned_digits: [10]u8 = undefined;
+    assign_digits_cp(
+        &weights,
+        unique.slice(),
+        &assigned_digits,
+        &domains,
+        &max_suffix,
+        &min_suffix,
+        0,
+        0,
+        0,
+        &stats,
+    );
+
+    if (stats.solution_count > 0) {
+        return stats;
+    }
+    return null;
+}
+
 // ==========================================
 // TEST SUITE
 // ==========================================
 
+fn benchSolve(name: []const u8, words: []const []const u8) ?Stats {
+    const start = std.Io.Timestamp.now(std.testing.io, .awake);
+    const stats = solve_cp(words);
+    const end = std.Io.Timestamp.now(std.testing.io, .awake);
+    const ns: f64 = @floatFromInt(end.nanoseconds - start.nanoseconds);
+    const us = ns / 1000.0;
+    const s = ns / 1_000_000_000.0;
+
+    std.debug.print("\n  >> {s}: {d:.6} s ({d:.2} us)", .{ name, s, us });
+    if (stats) |st| {
+        std.debug.print(" (solutions: {d}, nodes: {d}, conflicts: {d})\n", .{ st.solution_count, st.nodes_visites, st.conflicts });
+    } else {
+        std.debug.print(" (no solution)\n", .{});
+    }
+    return stats;
+}
+
 test "SEND + MORE = MONEY" {
-    const sol = solve("SEND", "MORE", "MONEY");
-    try std.testing.expect(sol != null);
-    try std.testing.expectEqual(@as(u64, 9567), sol.?.a);
-    try std.testing.expectEqual(@as(u64, 1085), sol.?.b);
-    try std.testing.expectEqual(@as(u64, 10652), sol.?.sum);
+    const stats = benchSolve("SEND + MORE = MONEY", &.{ "SEND", "MORE", "MONEY" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 1), stats.?.solution_count);
 }
 
 test "BASE + BALL = GAMES" {
-    const sol = solve("BASE", "BALL", "GAMES");
-    try std.testing.expect(sol != null);
-    try std.testing.expectEqual(@as(u64, 7483), sol.?.a);
-    try std.testing.expectEqual(@as(u64, 7455), sol.?.b);
-    try std.testing.expectEqual(@as(u64, 14938), sol.?.sum);
+    const stats = benchSolve("BASE + BALL = GAMES", &.{ "BASE", "BALL", "GAMES" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 1), stats.?.solution_count);
 }
 
 test "CROSS + ROADS = DANGER" {
-    const sol = solve("CROSS", "ROADS", "DANGER");
-    try std.testing.expect(sol != null);
-    try std.testing.expectEqual(@as(u64, 96233), sol.?.a);
-    try std.testing.expectEqual(@as(u64, 62513), sol.?.b);
-    try std.testing.expectEqual(@as(u64, 158746), sol.?.sum);
+    const stats = benchSolve("CROSS + ROADS = DANGER", &.{ "CROSS", "ROADS", "DANGER" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 1), stats.?.solution_count);
 }
 
 test "Impossible puzzle: NO + NO = NO" {
-    const sol = solve("NO", "NO", "NO");
-    try std.testing.expect(sol == null);
+    const stats = benchSolve("NO + NO = NO", &.{ "NO", "NO", "NO" });
+    try std.testing.expect(stats == null);
 }
 
 test "Too many unique letters (> 10 letters)" {
-    const sol = solve("ABCDE", "FGHIJ", "KLM");
-    try std.testing.expect(sol == null);
+    const stats = benchSolve("ABCDE + FGHIJ = KLM", &.{ "ABCDE", "FGHIJ", "KLM" });
+    try std.testing.expect(stats == null);
+}
+
+test "CP + IS + FUN = TRUE (Google OR-Tools benchmark - all 72 solutions)" {
+    const stats = benchSolve("CP + IS + FUN = TRUE", &.{ "CP", "IS", "FUN", "TRUE" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 72), stats.?.solution_count);
 }
