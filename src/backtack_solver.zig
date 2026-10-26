@@ -1,0 +1,289 @@
+const std = @import("std");
+
+pub const Stats = struct {
+    nodes_visites: usize,
+    conflicts: usize,
+    solution_count: usize,
+    unique_chars: [10]u8 = undefined,
+    unique_len: usize = 0,
+};
+
+pub const UniqueChars = struct {
+    chars: [10]u8,
+    len: usize,
+
+    pub fn slice(self: *UniqueChars) []u8 {
+        return self.chars[0..self.len];
+    }
+};
+
+pub fn get_unique_chars(words: []const []const u8) !UniqueChars {
+    var result: UniqueChars = .{ .chars = undefined, .len = 0 };
+    var seen: u32 = 0;
+
+    for (words) |word| {
+        for (word) |char| {
+            const bit = @as(u32, 1) << @intCast(char - 'A');
+            if ((seen & bit) == 0) {
+                seen |= bit;
+                if (result.len >= 10) return error.TooManyUniqueChars;
+                result.chars[result.len] = char;
+                result.len += 1;
+            }
+        }
+    }
+    return result;
+}
+
+pub fn char_to_digit(char: u8, unique_chars: []const u8, assigned_digits: []const u8) u8 {
+    // getter, returns the value in assigned_digits related to unique_chars
+    for (unique_chars, 0..) |c, i| {
+        if (c == char) return assigned_digits[i];
+    }
+    unreachable;
+}
+
+pub fn find_index(char: u8, unique_chars: []const u8) usize {
+    for (unique_chars, 0..) |c, i| {
+        if (c == char) return i;
+    }
+    unreachable;
+}
+
+pub fn word_to_number(word: []const u8, unique_chars: []const u8, assigned_digits: []const u8) u64 {
+    // all the words to a number, once they have been assigned?
+    var result: u64 = 0;
+    for (word) |char| {
+        const digit: u8 = char_to_digit(char, unique_chars, assigned_digits);
+        result = result * 10 + digit;
+    }
+    return result;
+}
+
+pub fn compute_weights(words: []const []const u8, unique_chars: []const u8, factor: []const i64) [10]i64 {
+    var weights: [10]i64 = @splat(0);
+    for (words, factor) |word, f| {
+        var m: i64 = f;
+        for (0..word.len) |i| {
+            const ch: u8 = word[word.len - i - 1];
+            weights[find_index(ch, unique_chars)] += m;
+            m *= 10;
+        }
+    }
+    return weights;
+}
+
+pub fn precomp_branches(
+    unique_chars: []const u8,
+    weights: []const i64,
+    max_suffix: []i64,
+    min_suffix: []i64,
+) void {
+    var pos_sum: i64 = 0;
+    var neg_sum: i64 = 0;
+    var i: usize = unique_chars.len;
+
+    while (i > 0) {
+        i -= 1;
+        const w = weights[i];
+        if (w > 0) {
+            pos_sum += w * 9;
+        } else if (w < 0) {
+            neg_sum += w * 9;
+        }
+        max_suffix[i] = pos_sum;
+        min_suffix[i] = neg_sum;
+    }
+}
+
+pub fn init_vars(words: []const []const u8, unique_chars: []const u8) [10]bool {
+    var bit_mask: [10]bool = @splat(false);
+    for (words) |word| {
+        if (word.len == 1) continue;
+        bit_mask[find_index(word[0], unique_chars)] = true;
+    }
+    return bit_mask;
+}
+
+pub fn sort_chars(unique_chars: []u8, weights: []i64, bit_mask: []bool) void {
+    for (0..unique_chars.len) |i| {
+        var tope = i;
+        for (i + 1..unique_chars.len) |j| {
+            if (@abs(weights[j]) > @abs(weights[tope])) {
+                tope = j;
+            }
+        }
+        if (tope != i) {
+            std.mem.swap(i64, &weights[i], &weights[tope]);
+            std.mem.swap(u8, &unique_chars[i], &unique_chars[tope]);
+            std.mem.swap(bool, &bit_mask[i], &bit_mask[tope]);
+        }
+    }
+}
+
+pub fn assign_digits(
+    weights: []const i64,
+    unique_chars: []const u8,
+    assigned_digits: []u8,
+    bit_mask: []const bool,
+    max_suffix: []i64,
+    min_suffix: []i64,
+    index: u8,
+    current_sum: i64,
+    used_mask: u16,
+    stats: *Stats,
+    solutions: [][10]u8
+) void {
+    stats.nodes_visites += 1;
+    if (index == unique_chars.len) { // you assigned numbers to all the chars
+        if (current_sum == 0) {
+            if (stats.solution_count < solutions.len) {
+                @memcpy(&solutions[stats.solution_count], assigned_digits[0..10]);
+            }
+            stats.solution_count += 1;
+        }
+        return;
+    }
+    if (current_sum + max_suffix[index] < 0) {
+        stats.conflicts += 1;
+        return;
+    }
+    if (current_sum + min_suffix[index] > 0) {
+        stats.conflicts += 1;
+        return;
+    }
+    for (0..10) |d| {
+        if ((used_mask & @as(u16, 1) << @intCast(d)) != 0) continue;
+        if (bit_mask[index] and d == 0) continue;
+        assigned_digits[index] = @intCast(d);
+        const next_sum = current_sum + weights[index] * @as(i64, @intCast(d));
+        assign_digits(
+            weights,
+            unique_chars,
+            assigned_digits,
+            bit_mask,
+            max_suffix,
+            min_suffix,
+            index + 1,
+            next_sum,
+            used_mask | (@as(u16, 1) << @intCast(d)),
+            stats,
+            solutions
+        );
+    }
+}
+
+pub fn solve(words: []const []const u8, solutions: [][10]u8) ?Stats {
+    var factors: [16]i64 = undefined;
+    for (words, 0..) |word, i| {
+        if (word.len == 0) return null;
+        if (i < words.len - 1) {
+            factors[i] = 1;
+        } else {
+            factors[words.len-1] = -1;
+        }
+    }
+    var unique = get_unique_chars(words) catch return null;
+    var weights: [10]i64 = compute_weights(words, unique.slice(), factors[0..words.len]);
+
+    var bit_mask: [10]bool = init_vars(words, unique.slice());
+    var stats: Stats = .{ .conflicts = 0, .nodes_visites = 0, .solution_count = 0 };
+    sort_chars(unique.slice(), &weights, &bit_mask);
+    stats.unique_chars = unique.chars;
+    stats.unique_len = unique.len;
+
+    var max_suffix: [10]i64 = @splat(0);
+    var min_suffix: [10]i64 = @splat(0);
+    precomp_branches(unique.slice(), &weights, &max_suffix, &min_suffix);
+
+    var assigned_digits: [10]u8 = undefined;
+    assign_digits(
+        &weights,
+        unique.slice(),
+        &assigned_digits,
+        &bit_mask,
+        &max_suffix,
+        &min_suffix,
+        0,
+        0,
+        0,
+        &stats,
+        solutions
+    );
+    if (stats.solution_count > 0) return stats;
+    return null;
+}
+
+// ==========================================
+// TEST SUITE
+// ==========================================
+
+fn benchSolve(name: []const u8, words: []const []const u8) ?Stats {
+    var solutions: [4096][10]u8 = undefined;
+    const start = std.Io.Timestamp.now(std.testing.io, .awake);
+    const stats = solve(words, &solutions);
+    const end = std.Io.Timestamp.now(std.testing.io, .awake);
+    const ns: f64 = @floatFromInt(end.nanoseconds - start.nanoseconds);
+    const us = ns / 1000.0;
+    const s = ns / 1_000_000_000.0;
+
+    std.debug.print("\n  >> {s}: {d:.6} s ({d:.2} us)", .{ name, s, us });
+    if (stats) |st| {
+        std.debug.print(" (solutions: {d}, nodes: {d}, conflicts: {d})\n", .{ st.solution_count, st.nodes_visites, st.conflicts });
+    } else {
+        std.debug.print(" (no solution)\n", .{});
+    }
+    return stats;
+}
+
+test "SEND + MORE = MONEY" {
+    const stats = benchSolve("SEND + MORE = MONEY", &.{ "SEND", "MORE", "MONEY" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 1), stats.?.solution_count);
+}
+
+test "BASE + BALL = GAMES" {
+    const stats = benchSolve("BASE + BALL = GAMES", &.{ "BASE", "BALL", "GAMES" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 1), stats.?.solution_count);
+}
+
+test "CROSS + ROADS = DANGER" {
+    const stats = benchSolve("CROSS + ROADS = DANGER", &.{ "CROSS", "ROADS", "DANGER" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 1), stats.?.solution_count);
+}
+
+test "Impossible puzzle: NO + NO = NO" {
+    const stats = benchSolve("NO + NO = NO", &.{ "NO", "NO", "NO" });
+    try std.testing.expect(stats == null);
+}
+
+test "Too many unique letters (> 10 letters)" {
+    const stats = benchSolve("ABCDE + FGHIJ = KLM", &.{ "ABCDE", "FGHIJ", "KLM" });
+    try std.testing.expect(stats == null);
+}
+
+test "CP + IS + FUN = TRUE (Google OR-Tools benchmark - all 72 solutions)" {
+    const stats = benchSolve("CP + IS + FUN = TRUE", &.{ "CP", "IS", "FUN", "TRUE" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 72), stats.?.solution_count);
+}
+
+test "ABC + DEF = GHIJ (10 unique letters - all 96 solutions)" {
+    const stats = benchSolve("ABC + DEF = GHIJ", &.{ "ABC", "DEF", "GHIJ" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 96), stats.?.solution_count);
+}
+
+test "SO + MANY = MORE (8 unique letters - all 748 solutions)" {
+    const stats = benchSolve("SO + MANY = MORE", &.{ "SO", "MANY", "MORE" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 748), stats.?.solution_count);
+}
+
+test "AB + CD + EF = GHI (9 unique letters - all 2556 solutions)" {
+    const stats = benchSolve("AB + CD + EF = GHI", &.{ "AB", "CD", "EF", "GHI" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 2556), stats.?.solution_count);
+}
