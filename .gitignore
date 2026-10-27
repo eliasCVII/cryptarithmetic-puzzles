@@ -1,4 +1,4 @@
 .zig-cache/
 zig-out/
+src/c_solver
 build.zig.zon
-src/main_bak.zig

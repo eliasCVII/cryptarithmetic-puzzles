@@ -269,10 +269,6 @@ pub fn solve(words: []const []const u8, solutions: [][10]u8) ?Stats {
     return null;
 }
 
-// ==========================================
-// TEST SUITE
-// ==========================================
-
 fn benchSolve(name: []const u8, words: []const []const u8) ?Stats {
     var solutions: [4096][10]u8 = undefined;
     const start = std.Io.Timestamp.now(std.testing.io, .awake);

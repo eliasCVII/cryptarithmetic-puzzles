@@ -22,7 +22,7 @@ struct String {
 };
 
 struct Domain {
-  unsigned char allowed[10];
+  unsigned char allowed[BASE];
   unsigned char count;
 };
 
@@ -51,8 +51,8 @@ struct Solver {
 
 void domain_init(struct Domain *d) {
   int i;
-  d->count = 10;
-  for (i = 0; i < 10; i = i + 1) {
+  d->count = BASE;
+  for (i = 0; i < BASE; i = i + 1) {
     d->allowed[i] = 1;
   }
 }
@@ -66,7 +66,7 @@ void domain_remove(struct Domain *d, int digit) {
 
 void domain_fix(struct Domain *d, int digit) {
   int i;
-  for (i = 0; i < 10; i = i + 1) {
+  for (i = 0; i < BASE; i = i + 1) {
     d->allowed[i] = 0;
   }
   d->allowed[digit] = 1;
@@ -77,7 +77,7 @@ int domain_is_fixed(struct Domain *d) { return d->count == 1; }
 
 int domain_get_fixed(struct Domain *d) {
   int i;
-  for (i = 0; i < 10; i = i + 1) {
+  for (i = 0; i < BASE; i = i + 1) {
     if (d->allowed[i] == 1) {
       return i;
     }
@@ -109,7 +109,7 @@ struct String get_unique_chars(struct String words[], unsigned char num_words) {
     for (j = 0; j < word.len; j = j + 1) {
       ch = word.chars[j];
       if (find_index(ch, result.chars, result.len) == -1) {
-        if (result.len >= 10)
+        if (result.len >= BASE)
           break;
         result.chars[result.len] = ch;
         result.len = result.len + 1;
@@ -138,7 +138,7 @@ void compute_weights(struct String words[], unsigned char num_words,
       ch = words[i].chars[j];
       index = find_index(ch, unique, unique_len);
       weights[index] = weights[index] + m;
-      m = m * 10;
+      m = m * BASE;
     }
   }
 }
@@ -174,14 +174,14 @@ long word_to_number(struct String word, char unique[], unsigned char unique_len,
   result = 0;
   for (i = 0; i < word.len; i = i + 1) {
     index = find_index(word.chars[i], unique, unique_len);
-    result = result * 10 + (long)assigned_digits[index];
+    result = result * BASE + (long)assigned_digits[index];
   }
   return result;
 }
 
 void presolve(struct String words[], unsigned char num_words, char unique[],
               unsigned char unique_len, struct Domain domains[]) {
-  int i, k, j, letter_pos, target_ch, fixed_digit;
+  int i, j, letter_pos, target_ch, fixed_digit;
   unsigned char max_len;
 
   for (i = 0; i < unique_len; i = i + 1) {
@@ -203,11 +203,11 @@ void presolve(struct String words[], unsigned char num_words, char unique[],
     target_ch = find_index(words[num_words - 1].chars[0], unique, unique_len);
     domain_fix(&domains[target_ch], 1);
   }
-  for (k = 0; k < unique_len; k = k + 1) {
-    if (domain_is_fixed(&domains[k])) {
-      fixed_digit = domain_get_fixed(&domains[k]);
+  for (i = 0; i < unique_len; i = i + 1) {
+    if (domain_is_fixed(&domains[i])) {
+      fixed_digit = domain_get_fixed(&domains[i]);
       for (j = 0; j < unique_len; j = j + 1) {
-        if (j != k) {
+        if (j != i) {
           domain_remove(&domains[j], fixed_digit);
         }
       }
@@ -235,7 +235,7 @@ void precomp_branches(unsigned char unique_len, long weights[],
 }
 
 void search(struct Solver *s, unsigned char index, long current_sum) {
-  int d, k;
+  int i, d;
   long w, d_long;
   unsigned long offset;
 
@@ -243,9 +243,9 @@ void search(struct Solver *s, unsigned char index, long current_sum) {
   if (index == s->unique_len) {
     if (current_sum == 0) {
       if (s->stats->solution_count < s->max_solutions) {
-        offset = s->stats->solution_count * 10;
-        for (k = 0; k < s->unique_len; k = k + 1) {
-          s->solutions[offset + k] = s->assigned_digits[k];
+        offset = s->stats->solution_count * BASE;
+        for (i = 0; i < s->unique_len; i = i + 1) {
+          s->solutions[offset + i] = s->assigned_digits[i];
         }
       }
       s->stats->solution_count = s->stats->solution_count + 1;
@@ -265,7 +265,7 @@ void search(struct Solver *s, unsigned char index, long current_sum) {
     if ((-current_sum) % w == 0) {
       d_long = (-current_sum) / w;
       if (d_long >= 0 &&
-          d_long <= 9 &&
+          d_long < BASE &&
           s->used_digits[d_long] == 0 &&
           domain_contains(&s->domains[index], (int)d_long) == 1)
       {
@@ -278,7 +278,7 @@ void search(struct Solver *s, unsigned char index, long current_sum) {
     }
     return;
   }
-  for (d = 0; d <= 9; d = d + 1) {
+  for (d = 0; d < BASE; d = d + 1) {
     if (s->used_digits[d] == 0 && domain_contains(&s->domains[index], d) == 1) {
       s->assigned_digits[index] = (unsigned char)d;
       s->used_digits[d] = 1;
@@ -306,7 +306,7 @@ struct Stats solve(
   stats.conflict = 0;
   stats.solution_count = 0;
   unique_word = get_unique_chars(words, num_words);
-  if (unique_word.len > 10) {
+  if (unique_word.len > BASE) {
     stats.unique_len = 0;
     return stats;
   }
@@ -325,7 +325,7 @@ struct Stats solve(
   }
   presolve(words, num_words, stats.unique_chars, stats.unique_len, domains);
   precomp_branches(stats.unique_len, weights, max_suffix, min_suffix);
-  for (i = 0; i < 10; i = i + 1) {
+  for (i = 0; i < BASE; i = i + 1) {
     used_digits[i] = 0;
     assigned_digits[i] = 0;
   }
@@ -361,12 +361,12 @@ struct String make_word(char str[]) {
 void run_puzzle(char name[], struct String words[], unsigned char num_words) {
   struct timespec start_time, end_time;
   struct Stats stats;
-  unsigned char solutions[SOLUTIONS_SIZE * 10];
+  unsigned char solutions[SOLUTIONS_SIZE * BASE];
   double elapsed_s, elapsed_us;
   unsigned long sol_idx;
   int w_i, k;
   long num;
-  unsigned char sol[10];
+  unsigned char sol[BASE];
 
   clock_gettime(CLOCK_MONOTONIC, &start_time);
   stats = solve(words, num_words, solutions, SOLUTIONS_SIZE);
@@ -383,9 +383,8 @@ void run_puzzle(char name[], struct String words[], unsigned char num_words) {
 
   if (stats.solution_count > 0) {
     for (sol_idx = 0; sol_idx < stats.solution_count; sol_idx = sol_idx + 1) {
-      if (sol_idx < 5) {
         for (k = 0; k < stats.unique_len; k = k + 1) {
-          sol[k] = solutions[(sol_idx * 10) + k];
+          sol[k] = solutions[(sol_idx * BASE) + k];
         }
         printf("   Sol #%lu: ", sol_idx + 1);
         for (w_i = 0; w_i < num_words; w_i = w_i + 1) {
@@ -398,11 +397,12 @@ void run_puzzle(char name[], struct String words[], unsigned char num_words) {
             printf("%ld + ", num);
           }
         }
-      }
+      // if (sol_idx < 5) {
+      // }
     }
-    if (stats.solution_count > 5) {
-      printf("   ... and %lu more solutions\n", stats.solution_count - 5);
-    }
+    // if (stats.solution_count > 5) {
+    //   printf("   ... and %lu more solutions\n", stats.solution_count - 5);
+    // }
   }
 }
 
