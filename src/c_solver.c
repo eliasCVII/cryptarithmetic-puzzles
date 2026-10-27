@@ -16,79 +16,6 @@
 #define MAX_WORD_LEN 16
 #define SOLUTIONS_SIZE 4096
 
-struct String {
-  char chars[MAX_WORD_LEN];
-  unsigned char len;
-};
-
-struct Domain {
-  unsigned char allowed[BASE];
-  unsigned char count;
-};
-
-struct Stats {
-  unsigned long nodes_visited;
-  unsigned long conflict;
-  unsigned long solution_count;
-  char unique_chars[BASE];
-  unsigned char unique_len;
-};
-
-struct Solver {
-  long *weights;
-  char *unique_chars;
-  struct Domain *domains;
-  long *max_suffix;
-  long *min_suffix;
-  unsigned char *assigned_digits;
-  unsigned char *used_digits;
-  unsigned char *solutions;
-  unsigned long max_solutions;
-  int last_nz;
-  unsigned char unique_len;
-  struct Stats *stats;
-};
-
-void domain_init(struct Domain *d) {
-  int i;
-  d->count = BASE;
-  for (i = 0; i < BASE; i = i + 1) {
-    d->allowed[i] = 1;
-  }
-}
-
-void domain_remove(struct Domain *d, int digit) {
-  if (d->allowed[digit] == 1) {
-    d->allowed[digit] = 0;
-    d->count = d->count - 1;
-  }
-}
-
-void domain_fix(struct Domain *d, int digit) {
-  int i;
-  for (i = 0; i < BASE; i = i + 1) {
-    d->allowed[i] = 0;
-  }
-  d->allowed[digit] = 1;
-  d->count = 1;
-}
-
-int domain_is_fixed(struct Domain *d) { return d->count == 1; }
-
-int domain_get_fixed(struct Domain *d) {
-  int i;
-  for (i = 0; i < BASE; i = i + 1) {
-    if (d->allowed[i] == 1) {
-      return i;
-    }
-  }
-  return -1;
-}
-
-int domain_contains(struct Domain *d, int digit) {
-  return d->allowed[digit] == 1;
-}
-
 int find_index(char c, char unique[], unsigned char len) {
   int i;
 
@@ -99,29 +26,29 @@ int find_index(char c, char unique[], unsigned char len) {
   return -1;
 }
 
-struct String get_unique_chars(struct String words[], unsigned char num_words) {
-  struct String word, result = {0};
+unsigned char get_unique_chars(char words[][MAX_WORD_LEN],
+                               unsigned char num_words, char unique[]) {
   int i, j;
-  unsigned char ch;
+  unsigned char len, ch;
 
+  len = 0;
   for (i = 0; i < num_words; i = i + 1) {
-    word = words[i];
-    for (j = 0; j < word.len; j = j + 1) {
-      ch = word.chars[j];
-      if (find_index(ch, result.chars, result.len) == -1) {
-        if (result.len >= BASE)
+    for (j = 0; words[i][j] != '\0'; j = j + 1) {
+      ch = words[i][j];
+      if (find_index(ch, unique, len) == -1) {
+        if (len >= BASE)
           break;
-        result.chars[result.len] = ch;
-        result.len = result.len + 1;
+        unique[len] = ch;
+        len = len + 1;
       }
     }
   }
-  return result;
+  return len;
 }
 
-void compute_weights(struct String words[], unsigned char num_words,
+void compute_weights(char words[][MAX_WORD_LEN], unsigned char num_words,
                      char unique[], unsigned char unique_len, long weights[]) {
-  int i, j, index;
+  int i, j, index, len;
   long m;
   char ch;
 
@@ -134,8 +61,12 @@ void compute_weights(struct String words[], unsigned char num_words,
     } else {
       m = -1;
     }
-    for (j = words[i].len - 1; j >= 0; j = j - 1) {
-      ch = words[i].chars[j];
+    len = 0;
+    while (words[i][len] != '\0') {
+      len = len + 1;
+    }
+    for (j = len - 1; j >= 0; j = j - 1) {
+      ch = words[i][j];
       index = find_index(ch, unique, unique_len);
       weights[index] = weights[index] + m;
       m = m * BASE;
@@ -166,49 +97,72 @@ void sort_chars(char unique[], long weights[], unsigned char unique_len) {
   }
 }
 
-long word_to_number(struct String word, char unique[], unsigned char unique_len,
+long word_to_number(char word[], char unique[], unsigned char unique_len,
                     unsigned char assigned_digits[]) {
   long result;
   int i, index;
 
   result = 0;
-  for (i = 0; i < word.len; i = i + 1) {
-    index = find_index(word.chars[i], unique, unique_len);
+  for (i = 0; word[i] != '\0'; i = i + 1) {
+    index = find_index(word[i], unique, unique_len);
     result = result * BASE + (long)assigned_digits[index];
   }
   return result;
 }
 
-void presolve(struct String words[], unsigned char num_words, char unique[],
-              unsigned char unique_len, struct Domain domains[]) {
-  int i, j, letter_pos, target_ch, fixed_digit;
-  unsigned char max_len;
+void presolve(char words[][MAX_WORD_LEN], unsigned char num_words,
+              char unique[], unsigned char unique_len,
+              unsigned char domains[BASE][BASE]) {
+  int i, j, letter_pos, target_ch, fixed_digit, one_count, len, max_len;
 
+  // Todos los digitos (0-9) son una posible asignacion
   for (i = 0; i < unique_len; i = i + 1) {
-    domain_init(&domains[i]);
+    for (j = 0; j < BASE; j = j + 1) {
+      domains[i][j] = 1;
+    }
   }
+  // Quitar 0 como valor para word[0] si strlen(word) > 0
   for (i = 0; i < num_words; i = i + 1) {
-    if (words[i].len > 1) {
-      letter_pos = find_index(words[i].chars[0], unique, unique_len);
-      domain_remove(&domains[letter_pos], 0);
+    if (words[i][1] != '\0') {
+      letter_pos = find_index(words[i][0], unique, unique_len);
+      domains[letter_pos][0] = 0;
     }
   }
   max_len = 0;
   for (i = 0; i < num_words - 1; i = i + 1) {
-    if (words[i].len > max_len) {
-      max_len = words[i].len;
+    j = 0;
+    while (words[i][j] != '\0') {
+      j = j + 1;
+    }
+    if (j > max_len) {
+      max_len = j;
     }
   }
-  if (num_words - 1 == 2 && words[num_words - 1].len > max_len) {
-    target_ch = find_index(words[num_words - 1].chars[0], unique, unique_len);
-    domain_fix(&domains[target_ch], 1);
+  len = 0;
+  while (words[num_words - 1][len] != '\0') {
+    len = len + 1;
+  }
+  // Acarreo entre dos letras -> la resultante es 1 o 0
+  if (num_words - 1 == 2 && len > max_len) {
+    target_ch = find_index(words[num_words - 1][0], unique, unique_len);
+    for (j = 0; j < BASE; j = j + 1) {
+      domains[target_ch][j] = 0;
+    }
+    domains[target_ch][1] = 1;
   }
   for (i = 0; i < unique_len; i = i + 1) {
-    if (domain_is_fixed(&domains[i])) {
-      fixed_digit = domain_get_fixed(&domains[i]);
+    one_count = 0;
+    fixed_digit = -1;
+    for (j = 0; j < BASE; j = j + 1) {
+      if (domains[i][j] == 1) {
+        one_count = one_count + 1;
+        fixed_digit = j;
+      }
+    }
+    if (one_count == 1) {
       for (j = 0; j < unique_len; j = j + 1) {
         if (j != i) {
-          domain_remove(&domains[j], fixed_digit);
+          domains[j][fixed_digit] = 0;
         }
       }
     }
@@ -234,208 +188,190 @@ void precomp_branches(unsigned char unique_len, long weights[],
   }
 }
 
-void search(struct Solver *s, unsigned char index, long current_sum) {
-  int i, d;
-  long w, d_long;
-  unsigned long offset;
+int find_next_digit(int index, long sum, int start_digit, long w,
+                    long max_suffix, long min_suffix, int last_nz,
+                    unsigned char used[], unsigned char domains[BASE][BASE]) {
+  int d;
+  long d_long;
 
-  s->stats->nodes_visited = s->stats->nodes_visited + 1;
-  if (index == s->unique_len) {
-    if (current_sum == 0) {
-      if (s->stats->solution_count < s->max_solutions) {
-        offset = s->stats->solution_count * BASE;
-        for (i = 0; i < s->unique_len; i = i + 1) {
-          s->solutions[offset + i] = s->assigned_digits[i];
+  if (start_digit == 0 && (sum + max_suffix < 0 || sum + min_suffix > 0)) {
+    return -1;
+  }
+  if (index == last_nz && w != 0) {
+    if (start_digit == 0 && (-sum) % w == 0) {
+      d_long = (-sum) / w;
+      if (d_long >= 0 && d_long < BASE) {
+        d = (int)d_long;
+        if (used[d] == 0 && domains[index][d] == 1) {
+          return d;
         }
       }
-      s->stats->solution_count = s->stats->solution_count + 1;
     }
-    return;
+    return -1;
   }
-  if (current_sum + s->max_suffix[index] < 0) {
-    s->stats->conflict = s->stats->conflict + 1;
-    return;
-  }
-  if (current_sum + s->min_suffix[index] > 0) {
-    s->stats->conflict = s->stats->conflict + 1;
-    return;
-  }
-  w = s->weights[index];
-  if (index == s->last_nz && w != 0) {
-    if ((-current_sum) % w == 0) {
-      d_long = (-current_sum) / w;
-      if (d_long >= 0 &&
-          d_long < BASE &&
-          s->used_digits[d_long] == 0 &&
-          domain_contains(&s->domains[index], (int)d_long) == 1)
-      {
-        d = (int)d_long;
-        s->assigned_digits[index] = (unsigned char)d;
-        s->used_digits[d] = 1;
-        search(s, index + 1, current_sum + (w * d_long));
-        s->used_digits[d] = 0;
-      }
+  for (d = start_digit; d < BASE; d = d + 1) {
+    if (used[d] == 0 && domains[index][d] == 1) {
+      return d;
     }
-    return;
   }
-  for (d = 0; d < BASE; d = d + 1) {
-    if (s->used_digits[d] == 0 && domain_contains(&s->domains[index], d) == 1) {
-      s->assigned_digits[index] = (unsigned char)d;
-      s->used_digits[d] = 1;
-      search(s, index + 1, current_sum + (w * (long)d));
-      s->used_digits[d] = 0;
+  return -1;
+}
+
+void save_solution(unsigned char solutions[], unsigned long max_solutions,
+                   unsigned long sol_count, unsigned char assigned[],
+                   unsigned char unique_len) {
+  int i;
+  unsigned long offset;
+
+  if (sol_count < max_solutions) {
+    offset = sol_count * BASE;
+    for (i = 0; i < (int)unique_len; i = i + 1) {
+      solutions[offset + i] = assigned[i];
     }
   }
 }
 
-struct Stats solve(
-  struct String words[],
-  unsigned char num_words,
-  unsigned char solutions[],
-  unsigned long max_solutions
-) {
-  struct String unique_word;
-  struct Stats stats;
-  struct Domain domains[BASE];
-  struct Solver s;
+unsigned long solve(char words[][MAX_WORD_LEN], unsigned char num_words,
+                    char unique[], unsigned char *out_unique_len,
+                    unsigned char solutions[], unsigned long max_solutions) {
+  int i, d, index, last_nz, next_digit[BASE + 1];
+  long sum_stack[BASE + 1];
+  unsigned long sol_count;
+  unsigned char unique_len, domains[BASE][BASE], assigned[BASE], used[BASE];
   long weights[BASE], max_suffix[BASE], min_suffix[BASE];
-  unsigned char assigned_digits[BASE], used_digits[BASE];
-  int i, last_nz;
 
-  stats.nodes_visited = 0;
-  stats.conflict = 0;
-  stats.solution_count = 0;
-  unique_word = get_unique_chars(words, num_words);
-  if (unique_word.len > BASE) {
-    stats.unique_len = 0;
-    return stats;
+  sol_count = 0;
+  for (i = 0; i < BASE; i = i + 1) {
+    used[i] = 0;
+    assigned[i] = 0;
   }
-  stats.unique_len = unique_word.len;
-  for (i = 0; i < unique_word.len; i = i + 1) {
-    stats.unique_chars[i] = unique_word.chars[i];
+
+  unique_len = get_unique_chars(words, num_words, unique);
+  if (unique_len > BASE || unique_len == 0) {
+    *out_unique_len = 0;
+    return 0;
   }
-  compute_weights(words, num_words, stats.unique_chars, stats.unique_len,
-                  weights);
-  sort_chars(stats.unique_chars, weights, stats.unique_len);
+  *out_unique_len = unique_len;
+
+  compute_weights(words, num_words, unique, unique_len, weights);
+  sort_chars(unique, weights, unique_len);
+
   last_nz = 0;
-  for (i = 0; i < stats.unique_len; i = i + 1) {
+  for (i = 0; i < (int)unique_len; i = i + 1) {
     if (weights[i] != 0) {
       last_nz = i;
     }
   }
-  presolve(words, num_words, stats.unique_chars, stats.unique_len, domains);
-  precomp_branches(stats.unique_len, weights, max_suffix, min_suffix);
-  for (i = 0; i < BASE; i = i + 1) {
-    used_digits[i] = 0;
-    assigned_digits[i] = 0;
+
+  presolve(words, num_words, unique, unique_len, domains);
+  precomp_branches(unique_len, weights, max_suffix, min_suffix);
+
+  index = 0;
+  sum_stack[0] = 0;
+  next_digit[0] = 0;
+
+  while (index >= 0) {
+    if (index == (int)unique_len) {
+      if (sum_stack[index] == 0) {
+        save_solution(solutions, max_solutions, sol_count, assigned,
+                      unique_len);
+        sol_count = sol_count + 1;
+      }
+      index = index - 1;
+      if (index >= 0) {
+        used[assigned[index]] = 0;
+      }
+    } else {
+      d = find_next_digit(index, sum_stack[index], next_digit[index],
+                          weights[index], max_suffix[index], min_suffix[index],
+                          last_nz, used, domains);
+      if (d != -1) {
+        assigned[index] = (unsigned char)d;
+        used[d] = 1;
+        sum_stack[index + 1] = sum_stack[index] + (weights[index] * (long)d);
+        next_digit[index] = d + 1;
+        index = index + 1;
+        next_digit[index] = 0;
+      } else {
+        index = index - 1;
+        if (index >= 0) {
+          used[assigned[index]] = 0;
+        }
+      }
+    }
   }
-  s.weights = weights;
-  s.unique_chars = stats.unique_chars;
-  s.domains = domains;
-  s.max_suffix = max_suffix;
-  s.min_suffix = min_suffix;
-  s.assigned_digits = assigned_digits;
-  s.used_digits = used_digits;
-  s.solutions = solutions;
-  s.max_solutions = max_solutions;
-  s.stats = &stats;
-  s.last_nz = last_nz;
-  s.unique_len = stats.unique_len;
-  search(&s, 0, 0);
-  return stats;
+  return sol_count;
 }
 
-struct String make_word(char str[]) {
-  struct String w;
-  int i;
-
-  w.len = 0;
-  for (i = 0; str[i] != '\0'; i = i + 1) {
-    w.chars[i] = str[i];
-    w.len = w.len + 1;
-  }
-  w.chars[w.len] = '\0';
-  return w;
-}
-
-void run_puzzle(char name[], struct String words[], unsigned char num_words) {
-  struct timespec start_time, end_time;
-  struct Stats stats;
-  unsigned char solutions[SOLUTIONS_SIZE * BASE];
-  double elapsed_s, elapsed_us;
-  unsigned long sol_idx;
+void print_solutions(char words[][MAX_WORD_LEN], unsigned char num_words,
+                     char unique[], unsigned char unique_len,
+                     unsigned char solutions[], unsigned long count,
+                     unsigned long max_to_print) {
   int w_i, k;
+  unsigned long s, offset, limit;
   long num;
   unsigned char sol[BASE];
 
-  clock_gettime(CLOCK_MONOTONIC, &start_time);
-  stats = solve(words, num_words, solutions, SOLUTIONS_SIZE);
-  clock_gettime(CLOCK_MONOTONIC, &end_time);
-
-  elapsed_s = (double)(end_time.tv_sec - start_time.tv_sec) +
-              (double)(end_time.tv_nsec - start_time.tv_nsec) / 1000000000.0;
-  elapsed_us = elapsed_s * 1000000.0;
-
-  printf("\n>> %s: %.6f s (%.2f us)\n", name, elapsed_s, elapsed_us);
-  printf("   Solutions found : %lu\n", stats.solution_count);
-  printf("   Nodes visited   : %lu\n", stats.nodes_visited);
-  printf("   Conflicts       : %lu\n", stats.conflict);
-
-  if (stats.solution_count > 0) {
-    for (sol_idx = 0; sol_idx < stats.solution_count; sol_idx = sol_idx + 1) {
-        for (k = 0; k < stats.unique_len; k = k + 1) {
-          sol[k] = solutions[(sol_idx * BASE) + k];
-        }
-        printf("   Sol #%lu: ", sol_idx + 1);
-        for (w_i = 0; w_i < num_words; w_i = w_i + 1) {
-          num = word_to_number(words[w_i], stats.unique_chars, stats.unique_len, sol);
-          if (w_i == num_words - 1) {
-            printf("= %ld\n", num);
-          } else if (w_i == num_words - 2) {
-            printf("%ld ", num);
-          } else {
-            printf("%ld + ", num);
-          }
-        }
-      // if (sol_idx < 5) {
-      // }
+  limit = count;
+  if (limit > max_to_print) {
+    limit = max_to_print;
+  }
+  for (s = 0; s < limit; s = s + 1) {
+    offset = s * BASE;
+    for (k = 0; k < (int)unique_len; k = k + 1) {
+      sol[k] = solutions[offset + k];
     }
-    // if (stats.solution_count > 5) {
-    //   printf("   ... and %lu more solutions\n", stats.solution_count - 5);
-    // }
+    printf("  Sol #%lu: ", s + 1);
+    for (w_i = 0; w_i < (int)num_words; w_i = w_i + 1) {
+      num = word_to_number(words[w_i], unique, unique_len, sol);
+      if (w_i == (int)num_words - 1) {
+        printf("= %ld  [", num);
+      } else if (w_i == (int)num_words - 2) {
+        printf("%ld ", num);
+      } else {
+        printf("%ld + ", num);
+      }
+    }
+    for (k = 0; k < (int)unique_len; k = k + 1) {
+      if (k == (int)unique_len - 1) {
+        printf("%c=%d]\n", unique[k], (int)sol[k]);
+      } else {
+        printf("%c=%d, ", unique[k], (int)sol[k]);
+      }
+    }
+  }
+  if (count > max_to_print) {
+    printf("  ... and %lu more solutions\n", count - max_to_print);
   }
 }
 
 int main(void) {
-  struct String send_more_money[3];
-  struct String cp_is_fun_true[4];
-  struct String so_many_more[3];
-  struct String ab_cd_ef_ghi[4];
+  char p1[3][MAX_WORD_LEN] = {"SEND", "MORE", "MONEY"};
+  char p2[4][MAX_WORD_LEN] = {"CP", "IS", "FUN", "TRUE"};
+  char p3[3][MAX_WORD_LEN] = {"SO", "MANY", "MORE"};
+  char p4[4][MAX_WORD_LEN] = {"AB", "CD", "EF", "GHI"};
+  char unique[BASE];
+  unsigned char unique_len;
+  unsigned char solutions[SOLUTIONS_SIZE * BASE];
+  unsigned long count;
 
-  send_more_money[0] = make_word("SEND");
-  send_more_money[1] = make_word("MORE");
-  send_more_money[2] = make_word("MONEY");
+  printf("=== CRYPTARITHMETIC PUZZLE SOLVER (FLAT C) ===\n\n");
 
-  cp_is_fun_true[0] = make_word("CP");
-  cp_is_fun_true[1] = make_word("IS");
-  cp_is_fun_true[2] = make_word("FUN");
-  cp_is_fun_true[3] = make_word("TRUE");
+  printf(">> SEND + MORE = MONEY:\n");
+  count = solve(p1, 3, unique, &unique_len, solutions, SOLUTIONS_SIZE);
+  print_solutions(p1, 3, unique, unique_len, solutions, count, 5);
 
-  so_many_more[0] = make_word("SO");
-  so_many_more[1] = make_word("MANY");
-  so_many_more[2] = make_word("MORE");
+  printf("\n>> CP + IS + FUN = TRUE:\n");
+  count = solve(p2, 4, unique, &unique_len, solutions, SOLUTIONS_SIZE);
+  print_solutions(p2, 4, unique, unique_len, solutions, count, 3);
 
-  ab_cd_ef_ghi[0] = make_word("AB");
-  ab_cd_ef_ghi[1] = make_word("CD");
-  ab_cd_ef_ghi[2] = make_word("EF");
-  ab_cd_ef_ghi[3] = make_word("GHI");
+  printf("\n>> SO + MANY = MORE:\n");
+  count = solve(p3, 3, unique, &unique_len, solutions, SOLUTIONS_SIZE);
+  print_solutions(p3, 3, unique, unique_len, solutions, count, 3);
 
-  printf("=== CRYPTARITHMETIC PUZZLE SOLVER (C VERSION) ===\n");
-
-  run_puzzle("SEND + MORE = MONEY", send_more_money, 3);
-  run_puzzle("CP + IS + FUN = TRUE", cp_is_fun_true, 4);
-  run_puzzle("SO + MANY = MORE", so_many_more, 3);
-  run_puzzle("AB + CD + EF = GHI", ab_cd_ef_ghi, 4);
+  printf("\n>> AB + CD + EF = GHI:\n");
+  count = solve(p4, 4, unique, &unique_len, solutions, SOLUTIONS_SIZE);
+  print_solutions(p4, 4, unique, unique_len, solutions, count, 3);
 
   return 0;
 }
