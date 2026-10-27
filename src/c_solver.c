@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define MAX_BASE 10
+#define BASE 10
 #define MAX_WORD_LEN 16
 #define SOLUTIONS_SIZE 4096
 
@@ -30,7 +30,7 @@ struct Stats {
   unsigned long nodes_visited;
   unsigned long conflict;
   unsigned long solution_count;
-  char unique_chars[MAX_BASE];
+  char unique_chars[BASE];
   unsigned char unique_len;
 };
 
@@ -101,11 +101,9 @@ int find_index(char c, char unique[], unsigned char len) {
 
 struct String get_unique_chars(struct String words[], unsigned char num_words) {
   struct String word, result = {0};
-  // unsigned int bit, seen;
   int i, j;
   unsigned char ch;
 
-  // seen = 0;
   for (i = 0; i < num_words; i = i + 1) {
     word = words[i];
     for (j = 0; j < word.len; j = j + 1) {
@@ -116,14 +114,6 @@ struct String get_unique_chars(struct String words[], unsigned char num_words) {
         result.chars[result.len] = ch;
         result.len = result.len + 1;
       }
-      // ch = word.chars[j];
-      // bit = 1 << (ch - 'A');
-      // if ((seen & bit) == 0) {
-      //   seen = seen | bit;
-      //   if (result.len >= 10) break;
-      //   result.chars[result.len] = ch;
-      //   result.len = result.len + 1;
-      // }
     }
   }
   return result;
@@ -277,7 +267,8 @@ void search(struct Solver *s, unsigned char index, long current_sum) {
       if (d_long >= 0 &&
           d_long <= 9 &&
           s->used_digits[d_long] == 0 &&
-          domain_contains(&s->domains[index], (int)d_long) == 1) {
+          domain_contains(&s->domains[index], (int)d_long) == 1)
+      {
         d = (int)d_long;
         s->assigned_digits[index] = (unsigned char)d;
         s->used_digits[d] = 1;
@@ -305,10 +296,10 @@ struct Stats solve(
 ) {
   struct String unique_word;
   struct Stats stats;
-  struct Domain domains[MAX_BASE];
+  struct Domain domains[BASE];
   struct Solver s;
-  long weights[MAX_BASE], max_suffix[MAX_BASE], min_suffix[MAX_BASE];
-  unsigned char assigned_digits[MAX_BASE], used_digits[MAX_BASE];
+  long weights[BASE], max_suffix[BASE], min_suffix[BASE];
+  unsigned char assigned_digits[BASE], used_digits[BASE];
   int i, last_nz;
 
   stats.nodes_visited = 0;

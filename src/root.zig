@@ -170,95 +170,101 @@ pub fn presolve(words: []const []const u8, unique_chars: []const u8, domains: []
     }
 }
 
-pub fn assign_digits(
+pub const Solver = struct {
     weights: []const i64,
     unique_chars: []const u8,
-    assigned_digits: []u8,
-    domains: []Domain,
-    max_suffix: []i64,
-    min_suffix: []i64,
-    index: u8,
-    current_sum: i64,
-    used_mask: u16,
+    domains: []const Domain,
+    max_suffix: []const i64,
+    min_suffix: []const i64,
+    last_nz: usize,
+    assigned_digits: *[10]u8,
+    solutions: [][10]u8,
     stats: *Stats,
-    solutions: [][10]u8
-) void {
-    stats.nodes_visites += 1;
-    if (index == unique_chars.len) { // you assigned numbers to all the chars
-        if (current_sum == 0) {
-            if (stats.solution_count < solutions.len) {
-                @memcpy(&solutions[stats.solution_count], assigned_digits[0..10]);
+
+    fn search(self: *Solver, index: usize, current_sum: i64, used_mask: u16) void {
+        self.stats.nodes_visites += 1;
+        if (index == self.unique_chars.len) { // you assigned numbers to all the chars
+            if (current_sum == 0) {
+                if (self.stats.solution_count < self.solutions.len) {
+                    @memcpy(&self.solutions[self.stats.solution_count], self.assigned_digits[0..10]);
+                }
+                self.stats.solution_count += 1;
             }
-            stats.solution_count += 1;
+            return;
         }
-        return;
+        if (current_sum + self.max_suffix[index] < 0) {
+            self.stats.conflicts += 1;
+            return;
+        }
+        if (current_sum + self.min_suffix[index] > 0) {
+            self.stats.conflicts += 1;
+            return;
+        }
+        const w = self.weights[index];
+        if (index == self.last_nz and w != 0) {
+            if (@rem(-current_sum, w) == 0) {
+                const d_i64 = @divTrunc(-current_sum, w);
+                if (d_i64 >= 0 and d_i64 <= 9) {
+                    const d: u4 = @intCast(d_i64);
+                    if (self.domains[index].contains(d) and (used_mask & (@as(u16, 1) << d)) == 0) {
+                        self.assigned_digits[index] = d;
+                        self.search(index + 1, current_sum + w * d_i64, used_mask | (@as(u16, 1) << d));
+                    }
+                }
+            }
+            return;
+        }
+        for (0..10) |d| {
+            if ((used_mask & @as(u16, 1) << @intCast(d)) != 0) continue;
+            if (!self.domains[index].contains(d)) continue;
+            self.assigned_digits[index] = @intCast(d);
+            const next_sum = current_sum + self.weights[index] * @as(i64, @intCast(d));
+            self.search(index + 1, next_sum, used_mask | (@as(u16, 1) << @intCast(d)));
+        }
     }
-    if (current_sum + max_suffix[index] < 0) {
-        stats.conflicts += 1;
-        return;
-    }
-    if (current_sum + min_suffix[index] > 0) {
-        stats.conflicts += 1;
-        return;
-    }
-    for (0..10) |d| {
-        if ((used_mask & @as(u16, 1) << @intCast(d)) != 0) continue;
-        if (!domains[index].contains(d)) continue;
-        assigned_digits[index] = @intCast(d);
-        const next_sum = current_sum + weights[index] * @as(i64, @intCast(d));
-        assign_digits(
-            weights,
-            unique_chars,
-            assigned_digits,
-            domains,
-            max_suffix,
-            min_suffix,
-            index + 1,
-            next_sum,
-            used_mask | (@as(u16, 1) << @intCast(d)),
-            stats,
-            solutions
-        );
-    }
-}
+};
 
 pub fn solve(words: []const []const u8, solutions: [][10]u8) ?Stats {
+    var stats: Stats = .{ .conflicts = 0, .nodes_visites = 0, .solution_count = 0 };
+    var unique: UniqueChars = undefined;
     var factors: [16]i64 = undefined;
+    var weights: [10]i64 = undefined;
+    var domains: [10]Domain = @splat(Domain.all());
+    var max_suffix: [10]i64 = @splat(0);
+    var min_suffix: [10]i64 = @splat(0);
+    var assigned_digits: [10]u8 = undefined;
+    var last_nz: usize = 0;
+
     for (words, 0..) |word, i| {
         if (word.len == 0) return null;
         if (i < words.len - 1) {
             factors[i] = 1;
         } else {
-            factors[words.len-1] = -1;
+            factors[words.len - 1] = -1;
         }
     }
-    var unique = get_unique_chars(words) catch return null;
-    var weights: [10]i64 = compute_weights(words, unique.slice(), factors[0..words.len]);
-    var stats: Stats = .{ .conflicts = 0, .nodes_visites = 0, .solution_count = 0 };
-    sort_chars(unique.slice(), &weights);
+    unique = get_unique_chars(words) catch return null;
     stats.unique_chars = unique.chars;
     stats.unique_len = unique.len;
-    var domains: [10]Domain = @splat(Domain.all());
+    weights = compute_weights(words, unique.slice(), factors[0..words.len]);
+    sort_chars(unique.slice(), &weights);
+    for (weights[0..unique.len], 0..) |w, i| {
+        if (w != 0) last_nz = i;
+    }
     presolve(words, unique.slice(), &domains);
-    var max_suffix: [10]i64 = @splat(0);
-    var min_suffix: [10]i64 = @splat(0);
     precomp_branches(unique.slice(), &weights, &max_suffix, &min_suffix);
-
-    var assigned_digits: [10]u8 = undefined;
-    assign_digits(
-        &weights,
-        unique.slice(),
-        &assigned_digits,
-        &domains,
-        &max_suffix,
-        &min_suffix,
-        0,
-        0,
-        0,
-        &stats,
-        solutions
-    );
-
+    var s = Solver{
+        .weights = &weights,
+        .unique_chars = unique.slice(),
+        .domains = &domains,
+        .max_suffix = &max_suffix,
+        .min_suffix = &min_suffix,
+        .last_nz = last_nz,
+        .assigned_digits = &assigned_digits,
+        .solutions = solutions,
+        .stats = &stats
+    };
+    s.search(0, 0, 0);
     if (stats.solution_count > 0) return stats;
     return null;
 }
