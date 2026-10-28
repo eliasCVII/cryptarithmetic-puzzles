@@ -102,7 +102,7 @@ long word_to_number(char word[], char unique[], unsigned char unique_len,
   result = 0;
   for (i = 0; word[i] != '\0'; i = i + 1) {
     index = find_index(word[i], unique, unique_len);
-    result = result * BASE + (long)assigned_digits[index];
+    result = result * BASE + assigned_digits[index];
   }
   return result;
 }
@@ -166,8 +166,8 @@ void presolve(char words[][MAX_WORD_LEN], unsigned char num_words,
   }
 }
 
-void precomp_branches(unsigned char unique_len, long weights[],
-                      long max_suffix[], long min_suffix[]) {
+void compute_rem_bounds(unsigned char unique_len, long weights[],
+                      long max_rem[], long min_rem[]) {
   long pos_sum, neg_sum, w;
   int i;
 
@@ -180,25 +180,25 @@ void precomp_branches(unsigned char unique_len, long weights[],
     } else if (w < 0) {
       neg_sum = neg_sum + (w * 9);
     }
-    max_suffix[i] = pos_sum;
-    min_suffix[i] = neg_sum;
+    max_rem[i] = pos_sum;
+    min_rem[i] = neg_sum;
   }
 }
 
 int find_next_digit(int index, long sum, int start_digit, long w,
-                    long max_suffix, long min_suffix, int last_nz,
+                    long max_rem, long min_rem, int last_nz,
                     unsigned char used[], unsigned char domains[BASE][BASE]) {
   int d;
   long d_long;
 
-  if (start_digit == 0 && (sum + max_suffix < 0 || sum + min_suffix > 0)) {
+  if (start_digit == 0 && (sum + max_rem < 0 || sum + min_rem > 0)) {
     return -1;
   }
   if (index == last_nz && w != 0) {
     if (start_digit == 0 && (-sum) % w == 0) {
       d_long = (-sum) / w;
       if (d_long >= 0 && d_long < BASE) {
-        d = (int)d_long;
+        d = d_long;
         if (used[d] == 0 && domains[index][d] == 1) {
           return d;
         }
@@ -222,7 +222,7 @@ void save_solution(unsigned char solutions[], unsigned long max_solutions,
 
   if (sol_count < max_solutions) {
     offset = sol_count * BASE;
-    for (i = 0; i < (int)unique_len; i = i + 1) {
+    for (i = 0; i < unique_len; i = i + 1) {
       solutions[offset + i] = assigned[i];
     }
   }
@@ -235,40 +235,34 @@ unsigned long solve(char words[][MAX_WORD_LEN], unsigned char num_words,
   long sum_stack[BASE + 1];
   unsigned long sol_count;
   unsigned char unique_len, domains[BASE][BASE], assigned[BASE], used[BASE];
-  long weights[BASE], max_suffix[BASE], min_suffix[BASE];
+  long weights[BASE], max_rem[BASE], min_rem[BASE];
 
   sol_count = 0;
   for (i = 0; i < BASE; i = i + 1) {
     used[i] = 0;
     assigned[i] = 0;
   }
-
   unique_len = get_unique_chars(words, num_words, unique);
   if (unique_len > BASE || unique_len == 0) {
     *out_unique_len = 0;
     return 0;
   }
   *out_unique_len = unique_len;
-
   compute_weights(words, num_words, unique, unique_len, weights);
   sort_chars(unique, weights, unique_len);
-
   last_nz = 0;
-  for (i = 0; i < (int)unique_len; i = i + 1) {
+  for (i = 0; i < unique_len; i = i + 1) {
     if (weights[i] != 0) {
       last_nz = i;
     }
   }
-
   presolve(words, num_words, unique, unique_len, domains);
-  precomp_branches(unique_len, weights, max_suffix, min_suffix);
-
+  compute_rem_bounds(unique_len, weights, max_rem, min_rem);
   index = 0;
   sum_stack[0] = 0;
   next_digit[0] = 0;
-
   while (index >= 0) {
-    if (index == (int)unique_len) {
+    if (index == unique_len) {
       if (sum_stack[index] == 0) {
         save_solution(solutions, max_solutions, sol_count, assigned,
                       unique_len);
@@ -280,12 +274,12 @@ unsigned long solve(char words[][MAX_WORD_LEN], unsigned char num_words,
       }
     } else {
       d = find_next_digit(index, sum_stack[index], next_digit[index],
-                          weights[index], max_suffix[index], min_suffix[index],
+                          weights[index], max_rem[index], min_rem[index],
                           last_nz, used, domains);
       if (d != -1) {
-        assigned[index] = (unsigned char)d;
+        assigned[index] = d;
         used[d] = 1;
-        sum_stack[index + 1] = sum_stack[index] + (weights[index] * (long)d);
+        sum_stack[index + 1] = sum_stack[index] + (weights[index] * d);
         next_digit[index] = d + 1;
         index = index + 1;
         next_digit[index] = 0;
@@ -315,25 +309,25 @@ void print_solutions(char words[][MAX_WORD_LEN], unsigned char num_words,
   }
   for (s = 0; s < limit; s = s + 1) {
     offset = s * BASE;
-    for (k = 0; k < (int)unique_len; k = k + 1) {
+    for (k = 0; k < unique_len; k = k + 1) {
       sol[k] = solutions[offset + k];
     }
     printf("  Sol #%lu: ", s + 1);
-    for (w_i = 0; w_i < (int)num_words; w_i = w_i + 1) {
+    for (w_i = 0; w_i < num_words; w_i = w_i + 1) {
       num = word_to_number(words[w_i], unique, unique_len, sol);
-      if (w_i == (int)num_words - 1) {
+      if (w_i == num_words - 1) {
         printf("= %ld  [", num);
-      } else if (w_i == (int)num_words - 2) {
+      } else if (w_i == num_words - 2) {
         printf("%ld ", num);
       } else {
         printf("%ld + ", num);
       }
     }
-    for (k = 0; k < (int)unique_len; k = k + 1) {
-      if (k == (int)unique_len - 1) {
-        printf("%c=%d]\n", unique[k], (int)sol[k]);
+    for (k = 0; k < unique_len; k = k + 1) {
+      if (k == unique_len - 1) {
+        printf("%c=%d]\n", unique[k], sol[k]);
       } else {
-        printf("%c=%d, ", unique[k], (int)sol[k]);
+        printf("%c=%d, ", unique[k], sol[k]);
       }
     }
   }

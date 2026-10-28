@@ -21,12 +21,12 @@ void presolve(char words[][MAX_WORD_LEN], unsigned char num_words,
               char unique[], unsigned char unique_len,
               unsigned char domains[BASE][BASE]);
 
-void precomp_branches(unsigned char unique_len, long weights[],
-                      long max_suffix[], long min_suffix[]);
+void compute_rem_bounds(unsigned char unique_len, long weights[],
+                        long max_rem[], long min_rem[]);
 
-int find_next_digit(int index, long sum, int start_digit, long w,
-                    long max_suffix, long min_suffix, int last_nz,
-                    unsigned char used[], unsigned char domains[BASE][BASE]);
+int find_next_digit(int index, long sum, int start_digit, long w, long max_rem,
+                    long min_rem, int last_nz, unsigned char used[],
+                    unsigned char domains[BASE][BASE]);
 
 void save_solution(unsigned char solutions[], unsigned long max_solutions,
                    unsigned long sol_count, unsigned char assigned[],

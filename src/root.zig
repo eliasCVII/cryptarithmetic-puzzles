@@ -270,7 +270,7 @@ pub fn solve(words: []const []const u8, solutions: [][10]u8) ?Stats {
 }
 
 fn benchSolve(name: []const u8, words: []const []const u8) ?Stats {
-    var solutions: [4096][10]u8 = undefined;
+    var solutions: [50000][10]u8 = undefined;
     const start = std.Io.Timestamp.now(std.testing.io, .awake);
     const stats = solve(words, &solutions);
     const end = std.Io.Timestamp.now(std.testing.io, .awake);
@@ -337,4 +337,40 @@ test "AB + CD + EF = GHI (9 unique letters - all 2556 solutions)" {
     const stats = benchSolve("AB + CD + EF = GHI", &.{ "AB", "CD", "EF", "GHI" });
     try std.testing.expect(stats != null);
     try std.testing.expectEqual(@as(usize, 2556), stats.?.solution_count);
+}
+
+test "AB + CDE + FG = HIJ (10 unique letters - all 2184 solutions)" {
+    const stats = benchSolve("AB + CDE + FG = HIJ", &.{ "AB", "CDE", "FG", "HIJ" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 2184), stats.?.solution_count);
+}
+
+test "AB + CD + EF + G = HIJ (10 unique letters - all 2160 solutions)" {
+    const stats = benchSolve("AB + CD + EF + G = HIJ", &.{ "AB", "CD", "EF", "G", "HIJ" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 2160), stats.?.solution_count);
+}
+
+test "A + B + C + D + E = FG (7 unique letters - all 5640 solutions)" {
+    const stats = benchSolve("A + B + C + D + E = FG", &.{ "A", "B", "C", "D", "E", "FG" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 5640), stats.?.solution_count);
+}
+
+test "A + B + C + D + E + F = GH (8 unique letters - all 16560 solutions)" {
+    const stats = benchSolve("A + B + C + D + E + F = GH", &.{ "A", "B", "C", "D", "E", "F", "GH" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 16560), stats.?.solution_count);
+}
+
+test "A + B + C + D + E + F + G = HI (9 unique letters - all 35280 solutions)" {
+    const stats = benchSolve("A + B + C + D + E + F + G = HI", &.{ "A", "B", "C", "D", "E", "F", "G", "HI" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 35280), stats.?.solution_count);
+}
+
+test "A + B + C + D + E + F + G + H = IJ (10 unique letters - all 40320 solutions)" {
+    const stats = benchSolve("A + B + C + D + E + F + G + H = IJ", &.{ "A", "B", "C", "D", "E", "F", "G", "H", "IJ" });
+    try std.testing.expect(stats != null);
+    try std.testing.expectEqual(@as(usize, 40320), stats.?.solution_count);
 }
