@@ -1,3 +1,7 @@
+// TODO: usar aritmetica con punteroos
+// TODO: Quitar arreglo de solutions y hacer print cada vez que se encuentra 1,
+//       pero mantener un contador de soluciones
+
 /*****************************************************
  *
  * solver.c : resuelve puzles Criptoaritmeticos?
@@ -8,33 +12,60 @@
  *
  ****************************************************/
 
+#include "solver.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
-#include "solver.h"
 
-int find_index(char c, char unique[], unsigned char len) {
+int parse(char *p, char *buff[]) {
+  int len, in_word;
+
+  len = 0;
+  in_word = 0;
+  while (*p) {
+    if (isspace(*p) || *p == '+' || *p == '=') {
+      *p = '\0';
+      p++;
+      in_word = 0;
+      continue;
+    }
+    if (isalnum(*p)) {
+      if (!in_word) {
+        buff[len] = p;
+        len = len + 1;
+        in_word = 1;
+      }
+      p = p + 1;
+      continue;
+    }
+    return 0;
+  }
+  buff[len] = NULL;
+  return len;
+}
+
+int find_index(char c, char *unique_ch, unsigned char len) {
   int i;
 
   for (i = 0; i < len; i = i + 1) {
-    if (c == unique[i])
+    if (c == (unique_ch[i]))
       return i;
   }
   return -1;
 }
 
-unsigned char get_unique_chars(char words[][MAX_WORD_LEN],
-                               unsigned char num_words, char unique[]) {
+unsigned char get_unique_chars(char *words[PUZ_SIZE], unsigned char words_len,
+                               char unique[]) {
   int i, j;
   unsigned char len, ch;
 
   len = 0;
-  for (i = 0; i < num_words; i = i + 1) {
+  for (i = 0; i < words_len; i = i + 1) {
     for (j = 0; words[i][j] != '\0'; j = j + 1) {
       ch = words[i][j];
       if (find_index(ch, unique, len) == -1) {
         if (len >= BASE)
-          break;
+          return BASE + 1; // hay mas de 10 letras distintas
         unique[len] = ch;
         len = len + 1;
       }
@@ -43,7 +74,7 @@ unsigned char get_unique_chars(char words[][MAX_WORD_LEN],
   return len;
 }
 
-void compute_weights(char words[][MAX_WORD_LEN], unsigned char num_words,
+void compute_weights(char *words[PUZ_SIZE], unsigned char words_len,
                      char unique[], unsigned char unique_len, long weights[]) {
   int i, j, index, len;
   long m;
@@ -52,8 +83,8 @@ void compute_weights(char words[][MAX_WORD_LEN], unsigned char num_words,
   for (i = 0; i < unique_len; i = i + 1) {
     weights[i] = 0;
   }
-  for (i = 0; i < num_words; i = i + 1) {
-    if (i < num_words - 1) {
+  for (i = 0; i < words_len; i = i + 1) {
+    if (i < words_len - 1) {
       m = 1;
     } else {
       m = -1;
@@ -94,80 +125,9 @@ void sort_chars(char unique[], long weights[], unsigned char unique_len) {
   }
 }
 
-long word_to_number(char word[], char unique[], unsigned char unique_len,
-                    unsigned char assigned_digits[]) {
-  long result;
-  int i, index;
-
-  result = 0;
-  for (i = 0; word[i] != '\0'; i = i + 1) {
-    index = find_index(word[i], unique, unique_len);
-    result = result * BASE + assigned_digits[index];
-  }
-  return result;
-}
-
-void presolve(char words[][MAX_WORD_LEN], unsigned char num_words,
-              char unique[], unsigned char unique_len,
-              unsigned char domains[BASE][BASE]) {
-  int i, j, letter_pos, target_ch, fixed_digit, one_count, len, max_len;
-
-  // Todos los digitos (0-9) son una posible asignacion
-  for (i = 0; i < unique_len; i = i + 1) {
-    for (j = 0; j < BASE; j = j + 1) {
-      domains[i][j] = 1;
-    }
-  }
-  // Quitar 0 como valor para word[0] si strlen(word) > 0
-  for (i = 0; i < num_words; i = i + 1) {
-    if (words[i][1] != '\0') {
-      letter_pos = find_index(words[i][0], unique, unique_len);
-      domains[letter_pos][0] = 0;
-    }
-  }
-  max_len = 0;
-  for (i = 0; i < num_words - 1; i = i + 1) {
-    j = 0;
-    while (words[i][j] != '\0') {
-      j = j + 1;
-    }
-    if (j > max_len) {
-      max_len = j;
-    }
-  }
-  len = 0;
-  while (words[num_words - 1][len] != '\0') {
-    len = len + 1;
-  }
-  // Acarreo entre dos letras -> la resultante es 1 o 0
-  if (num_words - 1 == 2 && len > max_len) {
-    target_ch = find_index(words[num_words - 1][0], unique, unique_len);
-    for (j = 0; j < BASE; j = j + 1) {
-      domains[target_ch][j] = 0;
-    }
-    domains[target_ch][1] = 1;
-  }
-  for (i = 0; i < unique_len; i = i + 1) {
-    one_count = 0;
-    fixed_digit = -1;
-    for (j = 0; j < BASE; j = j + 1) {
-      if (domains[i][j] == 1) {
-        one_count = one_count + 1;
-        fixed_digit = j;
-      }
-    }
-    if (one_count == 1) {
-      for (j = 0; j < unique_len; j = j + 1) {
-        if (j != i) {
-          domains[j][fixed_digit] = 0;
-        }
-      }
-    }
-  }
-}
 
 void compute_rem_bounds(unsigned char unique_len, long weights[],
-                      long max_rem[], long min_rem[]) {
+                        long max_rem[], long min_rem[]) {
   long pos_sum, neg_sum, w;
   int i;
 
@@ -185,9 +145,9 @@ void compute_rem_bounds(unsigned char unique_len, long weights[],
   }
 }
 
-int find_next_digit(int index, long sum, int start_digit, long w,
-                    long max_rem, long min_rem, int last_nz,
-                    unsigned char used[], unsigned char domains[BASE][BASE]) {
+int find_next_digit(int index, long sum, int start_digit, long w, long max_rem,
+                    long min_rem, int last_nz, unsigned char used[],
+                    unsigned char domains[BASE][BASE]) {
   int d;
   long d_long;
 
@@ -214,59 +174,109 @@ int find_next_digit(int index, long sum, int start_digit, long w,
   return -1;
 }
 
-void save_solution(unsigned char solutions[], unsigned long max_solutions,
-                   unsigned long sol_count, unsigned char assigned[],
-                   unsigned char unique_len) {
-  int i;
-  unsigned long offset;
+void presolve(char *words[PUZ_SIZE], unsigned char words_len, char unique[],
+              unsigned char unique_len, unsigned char domains[BASE][BASE]) {
+  int i, j, letter_pos, target_ch, fixed_digit, one_count, len, max_len;
 
-  if (sol_count < max_solutions) {
-    offset = sol_count * BASE;
-    for (i = 0; i < unique_len; i = i + 1) {
-      solutions[offset + i] = assigned[i];
+  // Todos los digitos (0-9) son una posible asignacion
+  for (i = 0; i < unique_len; i = i + 1) {
+    for (j = 0; j < BASE; j = j + 1) {
+      domains[i][j] = 1;
+    }
+  }
+  // Quitar 0 como valor para word[0] si strlen(word) > 0
+  for (i = 0; i < words_len; i = i + 1) {
+    if (words[i][1] != '\0') {
+      letter_pos = find_index(words[i][0], unique, unique_len);
+      domains[letter_pos][0] = 0;
+    }
+  }
+  max_len = 0;
+  for (i = 0; i < words_len - 1; i = i + 1) {
+    j = 0;
+    while (words[i][j] != '\0') {
+      j = j + 1;
+    }
+    if (j > max_len) {
+      max_len = j;
+    }
+  }
+  len = 0;
+  while (words[words_len - 1][len] != '\0') {
+    len = len + 1;
+  }
+  // Acarreo entre dos letras -> la resultante es 1 o 0
+  if (words_len - 1 == 2 && len > max_len) {
+    target_ch = find_index(words[words_len - 1][0], unique, unique_len);
+    for (j = 0; j < BASE; j = j + 1) {
+      domains[target_ch][j] = 0;
+    }
+    domains[target_ch][1] = 1;
+  }
+  for (i = 0; i < unique_len; i = i + 1) {
+    one_count = 0;
+    fixed_digit = -1;
+    for (j = 0; j < BASE; j = j + 1) {
+      if (domains[i][j] == 1) {
+        one_count = one_count + 1;
+        fixed_digit = j;
+      }
+    }
+    if (one_count == 1) {
+      for (j = 0; j < unique_len; j = j + 1) {
+        if (j != i) {
+          domains[j][fixed_digit] = 0;
+        }
+      }
     }
   }
 }
 
-unsigned long solve(char words[][MAX_WORD_LEN], unsigned char num_words,
-                    char unique[], unsigned char *out_unique_len,
-                    unsigned char solutions[], unsigned long max_solutions) {
+unsigned long solve(char *words[PUZ_SIZE], unsigned char len, int print,
+                    int first) {
   int i, d, index, last_nz, next_digit[BASE + 1];
+  unsigned long count;
+  char unique_ch[BASE];
   long sum_stack[BASE + 1];
-  unsigned long sol_count;
   unsigned char unique_len, domains[BASE][BASE], assigned[BASE], used[BASE];
   long weights[BASE], max_rem[BASE], min_rem[BASE];
 
-  sol_count = 0;
   for (i = 0; i < BASE; i = i + 1) {
     used[i] = 0;
     assigned[i] = 0;
   }
-  unique_len = get_unique_chars(words, num_words, unique);
+  unique_len = get_unique_chars(words, len, unique_ch);
   if (unique_len > BASE || unique_len == 0) {
-    *out_unique_len = 0;
     return 0;
   }
-  *out_unique_len = unique_len;
-  compute_weights(words, num_words, unique, unique_len, weights);
-  sort_chars(unique, weights, unique_len);
+  compute_weights(words, len, unique_ch, unique_len, weights);
+  sort_chars(unique_ch, weights, unique_len);
   last_nz = 0;
   for (i = 0; i < unique_len; i = i + 1) {
     if (weights[i] != 0) {
       last_nz = i;
     }
   }
-  presolve(words, num_words, unique, unique_len, domains);
+  presolve(words, len, unique_ch, unique_len, domains);
   compute_rem_bounds(unique_len, weights, max_rem, min_rem);
+  count = 0;
   index = 0;
   sum_stack[0] = 0;
   next_digit[0] = 0;
   while (index >= 0) {
+    // Estamos en una solucion
     if (index == unique_len) {
       if (sum_stack[index] == 0) {
-        save_solution(solutions, max_solutions, sol_count, assigned,
-                      unique_len);
-        sol_count = sol_count + 1;
+        count = count + 1;
+        if (print) {
+          for (i = 0; i < unique_len; i = i + 1) {
+            printf("%c=%d ", unique_ch[i], assigned[i]);
+          }
+          printf("\n");
+        }
+        if (first) {
+          break;
+        }
       }
       index = index - 1;
       if (index >= 0) {
@@ -291,47 +301,5 @@ unsigned long solve(char words[][MAX_WORD_LEN], unsigned char num_words,
       }
     }
   }
-  return sol_count;
-}
-
-void print_solutions(char words[][MAX_WORD_LEN], unsigned char num_words,
-                     char unique[], unsigned char unique_len,
-                     unsigned char solutions[], unsigned long count,
-                     unsigned long max_to_print) {
-  int w_i, k;
-  unsigned long s, offset, limit;
-  long num;
-  unsigned char sol[BASE];
-
-  limit = count;
-  if (limit > max_to_print) {
-    limit = max_to_print;
-  }
-  for (s = 0; s < limit; s = s + 1) {
-    offset = s * BASE;
-    for (k = 0; k < unique_len; k = k + 1) {
-      sol[k] = solutions[offset + k];
-    }
-    printf("  Sol #%lu: ", s + 1);
-    for (w_i = 0; w_i < num_words; w_i = w_i + 1) {
-      num = word_to_number(words[w_i], unique, unique_len, sol);
-      if (w_i == num_words - 1) {
-        printf("= %ld  [", num);
-      } else if (w_i == num_words - 2) {
-        printf("%ld ", num);
-      } else {
-        printf("%ld + ", num);
-      }
-    }
-    for (k = 0; k < unique_len; k = k + 1) {
-      if (k == unique_len - 1) {
-        printf("%c=%d]\n", unique[k], sol[k]);
-      } else {
-        printf("%c=%d, ", unique[k], sol[k]);
-      }
-    }
-  }
-  if (count > max_to_print) {
-    printf("  ... and %lu more solutions\n", count - max_to_print);
-  }
+  return count;
 }
