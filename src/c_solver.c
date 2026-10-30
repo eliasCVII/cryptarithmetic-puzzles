@@ -1,4 +1,3 @@
-// TODO: remove solutions[] and only print when solutions are found
 /*****************************************************
  *
  * c_solver.c : Resuelve y mide puzles criptoaritmeticos

@@ -1,7 +1,3 @@
-// TODO: usar aritmetica con punteroos
-// TODO: Quitar arreglo de solutions y hacer print cada vez que se encuentra 1,
-//       pero mantener un contador de soluciones
-
 /*****************************************************
  *
  * solver.c : resuelve puzles Criptoaritmeticos?
@@ -25,7 +21,7 @@ int parse(char *p, char *buff[]) {
   while (*p) {
     if (isspace(*p) || *p == '+' || *p == '=') {
       *p = '\0';
-      p++;
+      p = p + 1;
       in_word = 0;
       continue;
     }
@@ -150,16 +146,18 @@ int find_next_digit(int index, long sum, int start_digit, long w, long max_rem,
                     unsigned char domains[BASE][BASE]) {
   int d;
   long d_long;
+  unsigned char *fila;
 
   if (start_digit == 0 && (sum + max_rem < 0 || sum + min_rem > 0)) {
     return -1;
   }
+  fila = domains[index];
   if (index == last_nz && w != 0) {
     if (start_digit == 0 && (-sum) % w == 0) {
       d_long = (-sum) / w;
       if (d_long >= 0 && d_long < BASE) {
         d = d_long;
-        if (used[d] == 0 && domains[index][d] == 1) {
+        if (used[d] == 0 && fila[d] == 1) {
           return d;
         }
       }
@@ -167,7 +165,7 @@ int find_next_digit(int index, long sum, int start_digit, long w, long max_rem,
     return -1;
   }
   for (d = start_digit; d < BASE; d = d + 1) {
-    if (used[d] == 0 && domains[index][d] == 1) {
+    if (used[d] == 0 && fila[d] == 1) {
       return d;
     }
   }
