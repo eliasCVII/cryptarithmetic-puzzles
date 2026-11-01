@@ -13,7 +13,7 @@
 #include <string.h>
 #include <time.h>
 
-void bench_puzzle(char *words[], unsigned char len, int print, int first) {
+void bench(char *words[], unsigned char len, int print, int first) {
   unsigned long count;
   long t_start, t_end;
   float sec, us;
@@ -43,6 +43,6 @@ int main(int argc, char *argv[]) {
   len = parse(pp, words); // guarda las palabras en *words[]
   print = strcmp(argv[2], "count") != 0;
   first = strcmp(argv[2], "first") == 0;
-  bench_puzzle(words, len, print, first);
+  bench(words, len, print, first);
   return 0;
 }
