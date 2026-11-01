@@ -31,7 +31,6 @@ void bench_puzzle(char *words[], unsigned char len, int print, int first) {
 }
 
 // ./solver "PUZZLE+...+PIECES=SUM" <first, all, count>
-//   argv[0] argv[1]                 argv[2]
 int main(int argc, char *argv[]) {
   char *pp, *words[PUZ_SIZE];
   int len, print, first;

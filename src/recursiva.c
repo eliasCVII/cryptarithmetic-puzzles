@@ -1,11 +1,11 @@
 /*****************************************************
  *
- * initial_recursion.c : Resuelve y mide puzles criptoaritmeticos
+ * recursiva.c : Resuelve y mide puzles criptoaritmeticos
  *                       por backtracking recursivo
  *
  * Programmer:
  *
- * Santiago, 01/11/2025
+ * Santiago, 01/11/2026
  *
  ****************************************************/
 
@@ -177,8 +177,7 @@ void bench(char *words[], unsigned int num_words, char unique_chars[],
   printf("%f s (%.2f us)\n", sec, us);
 }
 
-// ./initial_recursion "PUZZLE+...+PIECES=SUM" <first, all, count>
-//   argv[0]           argv[1]                 argv[2]
+// ./r "PUZZLE+...+PIECES=SUM" <first, all, count>
 int main(int argc, char *argv[]) {
   char *words[PUZ_SIZE];
   char unique_chars[MAX_UNIQUE];
