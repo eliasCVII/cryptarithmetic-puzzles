@@ -20,13 +20,17 @@
 
 struct puzzle {
   char *words[PUZ_SIZE];
+  unsigned char word_len[PUZ_SIZE];
   unsigned char num_words;
   unsigned char assigned_digits[BASE];
   unsigned char used_digits[BASE];
   char unique_chars[BASE];
   unsigned char num_unique;
-}; // 160bytes
+}; // 176 bytes
 
+/*
+ *
+ */
 int parse(char *p, char *buff[]) {
   int len, in_word;
 
@@ -52,6 +56,9 @@ int parse(char *p, char *buff[]) {
   return len;
 }
 
+/*
+ *
+ */
 int get_unique_chars(struct puzzle *puz) {
   unsigned int i, j, k;
   char ch;
@@ -76,24 +83,37 @@ int get_unique_chars(struct puzzle *puz) {
   return 0;
 }
 
-unsigned char char_to_digit(char c, struct puzzle *puz) {
-  unsigned int i;
+/*
+ *
+ */
+void index_words(struct puzzle *p) {
+  int i, j, k;
+  char ch;
 
-  for (i = 0; i < puz->num_unique; i = i + 1) {
-    if (puz->unique_chars[i] == c) {
-      return puz->assigned_digits[i];
+  for (i = 0; i < p->num_words; i = i + 1) {
+    p->word_len[i] = strlen(p->words[i]);
+    for (j = 0; j < p->word_len[i]; j = j + 1) {
+      ch = p->words[i][j];
+      for (k = 0; k < p->num_unique; k = k + 1) {
+        if (p->unique_chars[k] == ch) {
+          p->words[i][j] = k;
+        }
+      }
     }
   }
-  return 0;
 }
 
-// Verificacion recursiva columna a columna (solvePuzzleHelper de optimizedversion.cpp)
-int solve_puzzle_helper(struct puzzle *puz, unsigned int pos, unsigned long carry) {
+/*
+ * Verificacion recursiva columna a columna (como solvePuzzleHelper)
+ */
+int solve_puzzle_helper(struct puzzle *puz, unsigned int pos,
+                        unsigned long carry) {
   unsigned long sum_val;
   unsigned int i, len, sum_len;
   char sum_char;
+  unsigned char ch_idx;
 
-  sum_len = strlen(puz->words[puz->num_words - 1]);
+  sum_len = puz->word_len[puz->num_words - 1];
   if (pos >= sum_len) {
     if (carry == 0) {
       return 1;
@@ -103,31 +123,35 @@ int solve_puzzle_helper(struct puzzle *puz, unsigned int pos, unsigned long carr
 
   sum_val = carry;
   for (i = 0; i < puz->num_words - 1; i = i + 1) {
-    len = strlen(puz->words[i]);
+    len = puz->word_len[i];
+    ch_idx = puz->words[i][len - 1 - pos];
     if (pos < len) {
-      sum_val = sum_val + char_to_digit(puz->words[i][len - 1 - pos], puz);
+      sum_val = sum_val + puz->assigned_digits[ch_idx];
     }
   }
 
   sum_char = puz->words[puz->num_words - 1][sum_len - 1 - pos];
-  if (char_to_digit(sum_char, puz) != (sum_val % 10)) {
+  if (puz->assigned_digits[(int)sum_char] != (sum_val % 10)) {
     return 0;
   }
 
   return solve_puzzle_helper(puz, pos + 1, sum_val / 10);
 }
 
-// Devuelve cuantas soluciones encontro (assignDigits de optimizedversion.cpp)
+/*
+ *  Devuelve cuantas soluciones encontro (equivalente a assignDigits)
+ */
 unsigned long search(struct puzzle *puz, unsigned char index, int print) {
   unsigned long count;
   unsigned int d, i;
+  unsigned char ch_idx;
 
   // Caso base: todas las letras tienen un digito asignado
   if (index == puz->num_unique) {
     // Una palabra de mas de una letra no puede empezar con 0
     for (i = 0; i < puz->num_words; i = i + 1) {
-      if (puz->words[i][1] != '\0' &&
-          char_to_digit(puz->words[i][0], puz) == 0) {
+      ch_idx = puz->words[i][0];
+      if (puz->word_len[i] > 1 && puz->assigned_digits[ch_idx] == 0) {
         return 0;
       }
     }
@@ -151,14 +175,14 @@ unsigned long search(struct puzzle *puz, unsigned char index, int print) {
       puz->used_digits[d] = 1;
       count = count + search(puz, index + 1, print);
       puz->used_digits[d] = 0;
-      if (count > 0) {
-        return count;
-      }
     }
   }
   return count;
 }
 
+/*
+ *
+ */
 void bench(struct puzzle *puz, int print) {
   unsigned long count;
   long t_start, t_end;
@@ -177,7 +201,9 @@ void bench(struct puzzle *puz, int print) {
   printf("%f s (%.2f us)\n", sec, us);
 }
 
-// ./optimizedversion "PUZZLE+...+PIECES=SUM" <first, all, count>
+/*
+ *
+ */
 int main(int argc, char *argv[]) {
   struct puzzle *puz;
   int print;
@@ -192,6 +218,7 @@ int main(int argc, char *argv[]) {
     printf("error: puzle invalido\n");
     return 1;
   }
+  index_words(puz);
   print = strcmp(argv[2], "count") != 0;
   bench(puz, print);
   free(puz);
