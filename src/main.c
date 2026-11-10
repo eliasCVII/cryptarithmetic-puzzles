@@ -3,9 +3,9 @@
  * optimizedversion.c : Resuelve puzles criptoaritmeticos
  *                      usando asignacion de letras y recursividad
  *
- * Programmer: Elias
+ * Programmer:
  *
- * Santiago, 04/11/2026
+ * Santiago, 00/11/2026
  *
  ****************************************************/
 
@@ -207,20 +207,25 @@ void bench(struct puzzle *puz, int print) {
 int main(int argc, char *argv[]) {
   struct puzzle *puz;
   int print;
+  FILE *file;
+  char line[256];
 
-  puz = calloc(1, sizeof(struct puzzle));
-  if (argc < 3) {
-    printf("Usage: %s <PUZZLE> <first, all, count>\n", argv[0]);
-    return 1;
-  }
-  puz->num_words = parse(argv[1], puz->words);
-  if (puz->num_words < 2 || get_unique_chars(puz) < 0) {
-    printf("error: puzle invalido\n");
-    return 1;
-  }
-  index_words(puz);
-  print = strcmp(argv[2], "count") != 0;
-  bench(puz, print);
-  free(puz);
+  if (argc == 3) {
+    file = fopen(argv[1], "r");
+    if (!file)
+      return 1;
+    while (fgets(line, sizeof(line), file)) {
+      printf("\n%s", line);
+      puz = calloc(1, sizeof(struct puzzle));
+      puz->num_words = parse(line, puz->words);
+      get_unique_chars(puz);
+      index_words(puz);
+      print = strcmp(argv[2], "count") != 0;
+      bench(puz, print);
+      free(puz);
+    }
+    fclose(file);
+  } else
+    printf("Usage: %s <filename> <all, count>\n", argv[0]);
   return 0;
 }
