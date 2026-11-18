@@ -1,7 +1,7 @@
 /*****************************************************
  *
- * optimizedversion.c : Resuelve puzles criptoaritmeticos
- *                      usando asignacion de letras y recursividad
+ * 03_main.c : Resuelve puzles criptoaritmeticos
+ *             usando asignacion de letras y recursividad
  *
  * Programmer:
  *
@@ -59,28 +59,35 @@ int parse(char *p, char *buff[]) {
 /*
  *
  */
-int get_unique_chars(struct puzzle *puz) {
-  unsigned int i, j, k;
+void get_unique_chars(struct puzzle *puz) {
+  unsigned int i, j, k, m, len;
   char ch;
 
-  puz->num_unique = 0;
+  m = 0;
   for (i = 0; i < puz->num_words; i = i + 1) {
-    for (j = 0; puz->words[i][j] != '\0'; j = j + 1) {
-      ch = puz->words[i][j];
-      k = 0;
-      while (k < puz->num_unique && puz->unique_chars[k] != ch) {
-        k = k + 1;
-      }
-      if (k == puz->num_unique) {
-        if (puz->num_unique >= BASE) {
-          return -1;
+    puz->word_len[i] = strlen(puz->words[i]);
+    if (m < puz->word_len[i])
+      m = puz->word_len[i];
+  }
+  puz->num_unique = 0;
+  for (j = 0; j < m; j = j + 1) {
+    for (i = 0; i < puz->num_words; i = i + 1) {
+      len = puz->word_len[i];
+      if (j < len) {
+        ch = puz->words[i][len - 1 - j];
+        k = 0;
+        while (k < puz->num_unique && puz->unique_chars[k] != ch) {
+          k = k + 1;
         }
-        puz->unique_chars[puz->num_unique] = ch;
-        puz->num_unique = puz->num_unique + 1;
+        if (k == puz->num_unique) {
+          if (puz->num_unique >= BASE)
+            return;
+          puz->unique_chars[puz->num_unique] = ch;
+          puz->num_unique = puz->num_unique + 1;
+        }
       }
     }
   }
-  return 0;
 }
 
 /*
@@ -91,13 +98,11 @@ void index_words(struct puzzle *p) {
   char ch;
 
   for (i = 0; i < p->num_words; i = i + 1) {
-    p->word_len[i] = strlen(p->words[i]);
     for (j = 0; j < p->word_len[i]; j = j + 1) {
       ch = p->words[i][j];
       for (k = 0; k < p->num_unique; k = k + 1) {
-        if (p->unique_chars[k] == ch) {
+        if (p->unique_chars[k] == ch)
           p->words[i][j] = k;
-        }
       }
     }
   }
@@ -106,36 +111,39 @@ void index_words(struct puzzle *p) {
 /*
  * Verificacion recursiva columna a columna (como solvePuzzleHelper)
  */
-int solve_puzzle_helper(struct puzzle *puz, unsigned int pos,
-                        unsigned long carry) {
-  unsigned long sum_val;
-  unsigned int i, len, sum_len;
-  char sum_char;
+int solve_puzzle_helper(struct puzzle *puz, unsigned int j, unsigned long carry,
+                        unsigned char index) {
+  unsigned long sum;
+  unsigned int i, len, res_len, has_char;
+  char res_char;
   unsigned char ch_idx;
 
-  sum_len = puz->word_len[puz->num_words - 1];
-  if (pos >= sum_len) {
-    if (carry == 0) {
-      return 1;
-    }
-    return 0;
-  }
-
-  sum_val = carry;
+  res_len = puz->word_len[puz->num_words - 1];
+  sum = carry;
+  has_char = 0;
   for (i = 0; i < puz->num_words - 1; i = i + 1) {
     len = puz->word_len[i];
-    ch_idx = puz->words[i][len - 1 - pos];
-    if (pos < len) {
-      sum_val = sum_val + puz->assigned_digits[ch_idx];
+    if (j < len) {
+      has_char = 1;
+      ch_idx = puz->words[i][len - 1 - j];
+      if (ch_idx >= index)
+        return 1;
+      sum = sum + puz->assigned_digits[ch_idx];
     }
   }
-
-  sum_char = puz->words[puz->num_words - 1][sum_len - 1 - pos];
-  if (puz->assigned_digits[(int)sum_char] != (sum_val % 10)) {
-    return 0;
+  if (has_char == 0 && j >= res_len)
+    return (carry == 0);
+  if (j < res_len) {
+    res_char = puz->words[puz->num_words - 1][res_len - 1 - j];
+    if (res_char >= index)
+      return 1;
+    if (puz->assigned_digits[(int)res_char] != (sum % 10))
+      return 0;
+  } else {
+    if (sum % 10 != 0)
+      return 0;
   }
-
-  return solve_puzzle_helper(puz, pos + 1, sum_val / 10);
+  return solve_puzzle_helper(puz, j + 1, sum / 10, index);
 }
 
 /*
@@ -144,21 +152,11 @@ int solve_puzzle_helper(struct puzzle *puz, unsigned int pos,
 unsigned long search(struct puzzle *puz, unsigned char index, int print) {
   unsigned long count;
   unsigned int d, i;
-  unsigned char ch_idx;
 
+  if (!solve_puzzle_helper(puz, 0, 0, index))
+    return 0;
   // Caso base: todas las letras tienen un digito asignado
   if (index == puz->num_unique) {
-    // Una palabra de mas de una letra no puede empezar con 0
-    for (i = 0; i < puz->num_words; i = i + 1) {
-      ch_idx = puz->words[i][0];
-      if (puz->word_len[i] > 1 && puz->assigned_digits[ch_idx] == 0) {
-        return 0;
-      }
-    }
-    // Verificacion recursiva columna a columna
-    if (!solve_puzzle_helper(puz, 0, 0)) {
-      return 0;
-    }
     // Es solucion
     if (print) {
       for (i = 0; i < puz->num_unique; i = i + 1) {
@@ -194,9 +192,8 @@ void bench(struct puzzle *puz, int print) {
   elapsed = t_end - t_start;
   sec = elapsed / CLOCKS_PER_SEC;
   us = sec * 1000000.0;
-  if (print) {
+  if (print)
     search(puz, 0, 1);
-  }
   printf("%lu solutions\n", count);
   printf("%f s (%.2f us)\n", sec, us);
 }
